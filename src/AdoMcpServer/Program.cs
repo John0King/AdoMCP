@@ -10,15 +10,13 @@ using Microsoft.Extensions.Logging;
 // ─────────────────────────────────────────────────────────────────────────────
 // Transport-mode detection
 //
-// The idiomatic approach for MCP servers:
-//   • When stdin is redirected (piped) the process is being driven by an MCP
-//     client → use stdio transport.
-//   • When running interactively (e.g. started from a terminal) → HTTP/SSE.
+// stdio is the default transport mode (suitable for MCP clients that launch
+// the process directly).  Pass --http (or set ADOMCP_MODE=http) to start an
+// HTTP/SSE server instead.
 //
-// Manual overrides are still honoured for scripting / CI:
-//   --stdio   force stdio mode
-//   --http    force HTTP mode
-//   ADOMCP_MODE=stdio|http  env-var override
+//   --http            force HTTP/SSE mode
+//   --stdio           force stdio mode (explicit, same as default)
+//   ADOMCP_MODE=http  env-var override to HTTP
 // ─────────────────────────────────────────────────────────────────────────────
 var modeArg = args.FirstOrDefault(a =>
     a.Equals("--stdio", StringComparison.OrdinalIgnoreCase) ||
@@ -36,15 +34,12 @@ bool allowAnySql = args.Any(a =>
 
 var envMode = Environment.GetEnvironmentVariable("ADOMCP_MODE");
 
-bool isStdio =
-    // Explicit flag
-    modeArg?.Equals("--stdio", StringComparison.OrdinalIgnoreCase) == true
-    // Env-var override
-    || string.Equals(envMode, "stdio", StringComparison.OrdinalIgnoreCase)
-    // Auto-detect: stdin is being piped → launched by an MCP client
-    || (modeArg is null
-        && !string.Equals(envMode, "http", StringComparison.OrdinalIgnoreCase)
-        && Console.IsInputRedirected);
+// HTTP mode only when explicitly requested; stdio is the default.
+bool isHttp =
+    modeArg?.Equals("--http", StringComparison.OrdinalIgnoreCase) == true
+    || string.Equals(envMode, "http", StringComparison.OrdinalIgnoreCase);
+
+bool isStdio = !isHttp;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder
