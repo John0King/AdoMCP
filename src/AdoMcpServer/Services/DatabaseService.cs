@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Text;
 using AdoMcpServer.Models;
 using Dapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -16,12 +18,74 @@ namespace AdoMcpServer.Services;
 
 public class DatabaseService(
     IOptions<List<DatabaseConfig>> options,
-    ILogger<DatabaseService> logger) : IDatabaseService
+    ILogger<DatabaseService> logger,
+    IHttpContextAccessor httpContextAccessor) : IDatabaseService
 {
-    // The list is mutable at runtime (ad-hoc connections added by the LLM);
-    // all access is serialised through _lock.
-    private readonly List<DatabaseConfig> _configs = new(options.Value);
-    private readonly Lock _lock = new();
+    // ─────────────────────────────────────────────────────────────────────────
+    // Global configs (from appsettings.json) – read-only, shared by all sessions.
+    // ─────────────────────────────────────────────────────────────────────────
+    private readonly IReadOnlyList<DatabaseConfig> _globalConfigs =
+        options.Value.ToList().AsReadOnly();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Per-session dynamic connections.
+    //
+    // In HTTP/SSE multi-client mode each MCP session carries a unique
+    // "Mcp-Session-Id" header.  We key the mutable connection list by that
+    // value so sessions cannot see each other's dynamically-added connections.
+    //
+    // In stdio mode (single-client process) IHttpContextAccessor.HttpContext
+    // is null; we fall back to the empty-string key, which is fine because
+    // there is only ever one session in that mode.
+    // ─────────────────────────────────────────────────────────────────────────
+    private readonly ConcurrentDictionary<string, SessionStore> _sessions =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // ── Per-session connection store ──────────────────────────────────────────
+
+    private sealed class SessionStore
+    {
+        private readonly List<DatabaseConfig> _configs = [];
+        private readonly Lock _lock = new();
+
+        public List<DatabaseConfig> GetSnapshot()
+        {
+            lock (_lock) return [.._configs];
+        }
+
+        public void AddOrReplace(DatabaseConfig config)
+        {
+            lock (_lock)
+            {
+                _configs.RemoveAll(c =>
+                    string.Equals(c.Name, config.Name, StringComparison.OrdinalIgnoreCase));
+                _configs.Add(config);
+            }
+        }
+
+        public bool Remove(string name)
+        {
+            lock (_lock)
+                return _configs.RemoveAll(c =>
+                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) > 0;
+        }
+    }
+
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the current session key.
+    /// In HTTP mode this is the value of the <c>Mcp-Session-Id</c> request
+    /// header (assigned by the MCP server upon session initialisation).
+    /// In stdio mode the HTTP context is null and we return an empty string
+    /// (the single-session fallback).
+    /// </summary>
+    private string GetSessionKey() =>
+        httpContextAccessor.HttpContext?.Request.Headers["Mcp-Session-Id"].ToString()
+        ?? string.Empty;
+
+    private SessionStore GetCurrentSessionStore() =>
+        _sessions.GetOrAdd(GetSessionKey(), _ => new SessionStore());
 
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
@@ -29,7 +93,14 @@ public class DatabaseService(
 
     public IReadOnlyList<DatabaseConfig> GetConfigurations()
     {
-        lock (_lock) return _configs.ToList().AsReadOnly();
+        var sessionConfigs = GetCurrentSessionStore().GetSnapshot();
+        // Session-local connections appear first; global ones fill the rest.
+        var sessionNames = new HashSet<string>(
+            sessionConfigs.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+        return sessionConfigs
+            .Concat(_globalConfigs.Where(c => !sessionNames.Contains(c.Name)))
+            .ToList()
+            .AsReadOnly();
     }
 
     public async Task<string?> AddConnectionAsync(
@@ -53,27 +124,21 @@ public class DatabaseService(
             }
         }
 
-        lock (_lock)
-        {
-            _configs.RemoveAll(c =>
-                string.Equals(c.Name, config.Name, StringComparison.OrdinalIgnoreCase));
-            _configs.Add(config);
-        }
-
-        logger.LogInformation("Connection '{Name}' ({DbType}) added/updated.", config.Name, config.DbType);
+        GetCurrentSessionStore().AddOrReplace(config);
+        logger.LogInformation(
+            "Connection '{Name}' ({DbType}) added to session '{Session}'.",
+            config.Name, config.DbType, GetSessionKey());
         return null; // success
     }
 
     public bool RemoveConnection(string name)
     {
-        lock (_lock)
-        {
-            var removed = _configs.RemoveAll(c =>
-                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)) > 0;
-            if (removed)
-                logger.LogInformation("Connection '{Name}' removed.", name);
-            return removed;
-        }
+        var removed = GetCurrentSessionStore().Remove(name);
+        if (removed)
+            logger.LogInformation(
+                "Connection '{Name}' removed from session '{Session}'.",
+                name, GetSessionKey());
+        return removed;
     }
 
     public async Task<List<TableInfo>> ListTablesAsync(
@@ -196,14 +261,17 @@ public class DatabaseService(
 
     private DatabaseConfig GetConfig(string name)
     {
-        lock (_lock)
-        {
-            var cfg = _configs.FirstOrDefault(c =>
-                string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
-            return cfg ?? throw new KeyNotFoundException(
-                $"No database configuration named '{name}' was found. " +
-                $"Available: {string.Join(", ", _configs.Select(c => c.Name))}");
-        }
+        var sessionConfigs = GetCurrentSessionStore().GetSnapshot();
+
+        // Session-local connections shadow global ones with the same name.
+        var cfg = sessionConfigs.FirstOrDefault(c =>
+                      string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))
+                  ?? _globalConfigs.FirstOrDefault(c =>
+                      string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        return cfg ?? throw new KeyNotFoundException(
+            $"No database configuration named '{name}' was found. " +
+            $"Available: {string.Join(", ", sessionConfigs.Concat(_globalConfigs).Select(c => c.Name).Distinct())}");
     }
 
     private static DbConnection CreateConnection(DatabaseConfig cfg) => cfg.DbType switch

@@ -15,7 +15,10 @@ public interface IDatabaseService
     /// </summary>
     Task<string?> AddConnectionAsync(DatabaseConfig config, bool testFirst = true, CancellationToken ct = default);
 
-    /// <summary>Removes a previously added (or pre-configured) connection by name.</summary>
+    /// <summary>
+    /// Removes a dynamically-added (session-local) connection by name.
+    /// Pre-configured connections from appsettings.json cannot be removed.
+    /// </summary>
     bool RemoveConnection(string name);
 
     /// <summary>Lists tables (and optionally views) in the target database, including their comments.</summary>

@@ -59,6 +59,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     [McpServerTool(Name = "add_connection")]
     [Description("""
         在运行时动态添加（或替换）一个数据库连接，无需修改配置文件。
+        添加的连接仅在当前会话中可见（HTTP 多客户端模式下不同客户端互相隔离）。
         添加后可立即通过其他工具（list_tables、execute_sql 等）使用该连接名称。
         支持的 dbType 值：SqlServer | MySql | PostgreSql | Sqlite | Oracle
         """)]
@@ -105,14 +106,17 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     // ─────────────────────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "remove_connection")]
-    [Description("移除一个已注册的数据库连接（动态添加的或预配置的均可）。")]
+    [Description("""
+        移除当前会话中动态添加的数据库连接。
+        注意：通过配置文件预配置的连接（appsettings.json）属于服务器管理员，不可在会话中删除。
+        """)]
     public string RemoveConnection(
         [Description("要移除的连接名称。")]
         string connectionName)
     {
         return db.RemoveConnection(connectionName)
-            ? $"连接 '{connectionName}' 已移除。"
-            : $"未找到名为 '{connectionName}' 的连接。";
+            ? $"连接 '{connectionName}' 已从当前会话中移除。"
+            : $"未找到名为 '{connectionName}' 的会话连接（预配置的连接无法删除）。";
     }
 
     // ─────────────────────────────────────────────────────────────────────────
