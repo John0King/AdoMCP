@@ -11,9 +11,10 @@
     <UserSecretsId>AdoMcpServer-secrets</UserSecretsId>
     <!-- Required for `npx <NuGet-package>` / `ndx <NuGet-package>` support in .NET 10 -->
     <PackAsTool>true</PackAsTool>
+    <IsPackable>true</IsPackable>
     <ToolCommandName>adomcp</ToolCommandName>
-    <PackageId>AdoMcpServer</PackageId>
-    <Version>1.0.0</Version>
+    <PackageId>AdoMcp</PackageId>
+    <Version>1.0.1</Version>
     <Authors>John0King</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/John0King/AdoMCPServer</PackageProjectUrl>
@@ -21,12 +22,12 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>mcp;model-context-protocol;database;sql;sqlserver;mysql;postgresql;sqlite;oracle;ai;llm</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageIcon>icon.png</PackageIcon>
+    <!--<PackageIcon>icon.png</PackageIcon>-->
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\..\icon.png')" />
+    <!--<None Include="..\..\icon.png" Pack="true" PackagePath="\" Condition="Exists('..\..\icon.png')" />-->
   </ItemGroup>
 
   <ItemGroup>
