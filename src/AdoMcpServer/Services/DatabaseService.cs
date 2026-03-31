@@ -141,7 +141,7 @@ public class DatabaseService(
         string connectionName, string sql, int maxRows = 200, CancellationToken ct = default)
     {
         var (_, conn) = await OpenAsync(connectionName, ct);
-        await using var __ = conn;
+        await using var _ = conn;
 
         logger.LogDebug("ExecuteSQL on '{Connection}': {Sql}", connectionName, sql);
 

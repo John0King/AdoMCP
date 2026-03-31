@@ -39,7 +39,7 @@ internal abstract class DbProviderBase(ILogger logger)
     }
 
     private static string FormatValue(object? value) =>
-        value is null ? "NULL" : $"'{value}'";
+        value is null ? "NULL" : value.ToString() ?? "(null)";
 
     // ─────────────────────────────────────────────────────────────────────────
     // Shared helpers
