@@ -10,9 +10,12 @@ namespace AdoMcpServer.Services.Providers;
 /// </summary>
 internal interface IDbProvider
 {
-    /// <summary>Lists tables (and optionally views) visible to the current connection.</summary>
-    Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct);
+    /// <summary>
+    /// Lists all database objects (tables, views, stored procedures, functions, triggers,
+    /// synonyms, sequences, etc.) visible to the current connection.
+    /// </summary>
+    Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct);
 
     /// <summary>Returns the full column-level schema for a single table.</summary>
     Task<TableSchema> GetTableSchemaAsync(

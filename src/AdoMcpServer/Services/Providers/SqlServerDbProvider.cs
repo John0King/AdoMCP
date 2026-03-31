@@ -7,15 +7,25 @@ namespace AdoMcpServer.Services.Providers;
 
 internal sealed class SqlServerDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
-    public async Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct)
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
     {
-        var typeFilter = includeViews ? "('U','V')" : "('U')";
+        // sys.objects covers tables, views, procedures, functions, triggers and synonyms in one place.
         var sql = $"""
             SELECT
                 s.name          AS [Schema],
                 t.name          AS [Name],
-                CASE t.type WHEN 'U' THEN 'TABLE' ELSE 'VIEW' END AS [Type],
+                CASE t.type
+                    WHEN 'U'  THEN 'TABLE'
+                    WHEN 'V'  THEN 'VIEW'
+                    WHEN 'P'  THEN 'PROCEDURE'
+                    WHEN 'FN' THEN 'FUNCTION'
+                    WHEN 'IF' THEN 'FUNCTION'
+                    WHEN 'TF' THEN 'FUNCTION'
+                    WHEN 'TR' THEN 'TRIGGER'
+                    WHEN 'SN' THEN 'SYNONYM'
+                    ELSE t.type
+                END             AS [Type],
                 ep.value        AS [Comment]
             FROM sys.objects t
             JOIN sys.schemas s ON s.schema_id = t.schema_id
@@ -24,7 +34,8 @@ internal sealed class SqlServerDbProvider(ILogger logger) : DbProviderBase(logge
                 AND ep.minor_id = 0
                 AND ep.name = 'MS_Description'
                 AND ep.class = 1
-            WHERE t.type IN {typeFilter}
+            WHERE t.type IN ('U','V','P','FN','IF','TF','TR','SN')
+              AND t.is_ms_shipped = 0
               AND (@nameFilter IS NULL OR t.name LIKE @nameFilter)
               AND (@schemaFilter IS NULL OR s.name LIKE @schemaFilter)
             ORDER BY s.name, t.name

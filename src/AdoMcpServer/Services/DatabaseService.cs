@@ -103,21 +103,21 @@ public class DatabaseService(
         return removed;
     }
 
-    public async Task<List<TableInfo>> ListTablesAsync(
-        string connectionName, bool includeViews = true, string? nameFilter = null,
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        string connectionName, string? nameFilter = null,
         string? schemaFilter = null, CancellationToken ct = default)
     {
         var (cfg, conn) = await OpenAsync(connectionName, ct);
-        await using var _ = conn;
-        return await GetProvider(cfg).ListTablesAsync(conn, includeViews, nameFilter, schemaFilter, ct);
+        await using (conn)
+            return await GetProvider(cfg).ListDbObjectsAsync(conn, nameFilter, schemaFilter, ct);
     }
 
     public async Task<TableSchema> GetTableSchemaAsync(
         string connectionName, string tableName, string? schema = null, CancellationToken ct = default)
     {
         var (cfg, conn) = await OpenAsync(connectionName, ct);
-        await using var _ = conn;
-        return await GetProvider(cfg).GetTableSchemaAsync(conn, tableName, schema, ct);
+        await using (conn)
+            return await GetProvider(cfg).GetTableSchemaAsync(conn, tableName, schema, ct);
     }
 
     public async Task<List<RoutineInfo>> ListRoutinesAsync(
@@ -125,59 +125,60 @@ public class DatabaseService(
         CancellationToken ct = default)
     {
         var (cfg, conn) = await OpenAsync(connectionName, ct);
-        await using var _ = conn;
-        return await GetProvider(cfg).ListRoutinesAsync(conn, nameFilter, schemaFilter, ct);
+        await using (conn)
+            return await GetProvider(cfg).ListRoutinesAsync(conn, nameFilter, schemaFilter, ct);
     }
 
     public async Task<List<IndexInfo>> GetTableIndexesAsync(
         string connectionName, string tableName, string? schema = null, CancellationToken ct = default)
     {
         var (cfg, conn) = await OpenAsync(connectionName, ct);
-        await using var _ = conn;
-        return await GetProvider(cfg).GetIndexesAsync(conn, tableName, schema, ct);
+        await using (conn)
+            return await GetProvider(cfg).GetIndexesAsync(conn, tableName, schema, ct);
     }
 
     public async Task<QueryResult> ExecuteSqlAsync(
         string connectionName, string sql, int maxRows = 200, CancellationToken ct = default)
     {
         var (_, conn) = await OpenAsync(connectionName, ct);
-        await using var _ = conn;
-
-        logger.LogDebug("ExecuteSQL on '{Connection}': {Sql}", connectionName, sql);
-
-        var result = new QueryResult();
-        try
+        await using (conn)
         {
-            await using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-            cmd.CommandTimeout = 30;
+            logger.LogDebug("ExecuteSQL on '{Connection}': {Sql}", connectionName, sql);
 
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-
-            // Collect column names
-            for (var i = 0; i < reader.FieldCount; i++)
-                result.Columns.Add(reader.GetName(i));
-
-            var rowCount = 0;
-            while (await reader.ReadAsync(ct) && rowCount < maxRows)
+            var result = new QueryResult();
+            try
             {
-                var row = new QueryRow();
-                for (var i = 0; i < reader.FieldCount; i++)
-                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+                cmd.CommandTimeout = 30;
 
-                result.Rows.Add(row);
-                rowCount++;
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                // Collect column names
+                for (var i = 0; i < reader.FieldCount; i++)
+                    result.Columns.Add(reader.GetName(i));
+
+                var rowCount = 0;
+                while (await reader.ReadAsync(ct) && rowCount < maxRows)
+                {
+                    var row = new QueryRow();
+                    for (var i = 0; i < reader.FieldCount; i++)
+                        row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+
+                    result.Rows.Add(row);
+                    rowCount++;
+                }
+
+                result.RowsAffected = reader.RecordsAffected;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "SQL execution error for connection '{Name}'", connectionName);
+                result.ErrorMessage = ex.Message;
             }
 
-            result.RowsAffected = reader.RecordsAffected;
+            return result;
         }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "SQL execution error for connection '{Name}'", connectionName);
-            result.ErrorMessage = ex.Message;
-        }
-
-        return result;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

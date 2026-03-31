@@ -1,9 +1,7 @@
-using System.Data;
 using System.Data.Common;
 using AdoMcpServer.Models;
 using Dapper;
 using Microsoft.Extensions.Logging;
-using Oracle.ManagedDataAccess.Client;
 
 namespace AdoMcpServer.Services.Providers;
 
@@ -12,82 +10,59 @@ namespace AdoMcpServer.Services.Providers;
 /// <para>
 /// Key implementation notes:
 /// <list type="bullet">
-///   <item>All queries use <see cref="OracleDynamicParameters"/> so that
-///         <see cref="OracleCommand.BindByName"/> is set to <c>true</c>.
-///         Oracle ODP.NET defaults to positional binding; when the same named
-///         parameter appears more than once in a SQL statement, positional mode
-///         requires a separate parameter object for each occurrence, which causes
-///         <c>ORA-01745</c>.  Named binding avoids the problem entirely.</item>
-///   <item>Parameters are never named after Oracle reserved words.
-///         <c>:table</c> and <c>:schema</c> are renamed to <c>:tableName</c>
-///         and <c>:ownerName</c> to avoid potential parse errors.</item>
-///   <item>When no schema is supplied the USER_* views are used so that the
-///         query never requires special DBA privileges and no owner filter is
-///         applied at all – matching the behaviour of
-///         <c>ListTablesAsync</c> / <c>ListRoutinesAsync</c>.
-///         <c>COALESCE(:schema, SYS_CONTEXT(...))</c> is NOT used because it
-///         still adds an owner condition; the correct behaviour is to omit the
-///         condition when the caller did not specify a schema.</item>
+///   <item>Oracle ODP.NET defaults to positional parameter binding.  To avoid
+///         binding mismatches, every named parameter must appear <em>exactly once</em>
+///         in each SQL statement, and anonymous-object properties must be declared
+///         in the same order the corresponding placeholders appear in the SQL.</item>
+///   <item>Nullable filter parameters use <c>NVL(:param, '%')</c> so the placeholder
+///         appears once while still matching everything when the value is <c>NULL</c>.</item>
+///   <item>The primary-key sub-query in <c>GetTableSchemaAsync</c> is restructured to
+///         include <c>TABLE_NAME</c>/<c>OWNER</c> in its result set, eliminating the
+///         need to repeat <c>:tableName</c>/<c>:ownerName</c> inside the sub-query.</item>
+///   <item>When no schema is supplied, USER_* views are used (no special privileges
+///         required) and no OWNER filter is applied at all.</item>
 /// </list>
 /// </para>
 /// </summary>
 internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
     // ─────────────────────────────────────────────────────────────────────────
-    // OracleDynamicParameters – sets BindByName = true before Dapper binds
+    // list all DB objects
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Wraps <see cref="DynamicParameters"/> and sets <see cref="OracleCommand.BindByName"/>
-    /// to <c>true</c> before parameters are bound.  This allows the same named
-    /// parameter (e.g. <c>:tableName</c>) to appear multiple times in a single
-    /// SQL statement without requiring duplicate parameter objects.
-    /// </summary>
-    private sealed class OracleDynamicParameters(object template) : SqlMapper.IDynamicParameters
-    {
-        private readonly DynamicParameters _inner = new(template);
-
-        public void AddParameters(IDbCommand command, SqlMapper.Identity identity)
-        {
-            if (command is OracleCommand oracleCmd)
-                oracleCmd.BindByName = true;
-            ((SqlMapper.IDynamicParameters)_inner).AddParameters(command, identity);
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // list tables
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public async Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct)
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
     {
         // When no schema filter is given, use USER_* views (no special privileges required).
         // When a schema (owner) is specified, fall back to ALL_* views.
+        // NVL(:nameFilter, '%') means "match everything when nameFilter is NULL".
+        // Each named parameter appears exactly once, satisfying Oracle positional binding.
         string sql;
         object paramObj;
 
         if (schemaFilter is null)
         {
-            var typeFilter = includeViews ? "o.OBJECT_TYPE IN ('TABLE','VIEW')" : "o.OBJECT_TYPE = 'TABLE'";
-            sql = $"""
+            sql = """
                 SELECT
                     USER                AS "Schema",
                     o.OBJECT_NAME       AS "Name",
                     o.OBJECT_TYPE       AS "Type",
                     c.COMMENTS          AS "Comment"
                 FROM USER_OBJECTS o
-                LEFT JOIN USER_TAB_COMMENTS c ON c.TABLE_NAME = o.OBJECT_NAME
-                WHERE {typeFilter}
-                  AND (:nameFilter IS NULL OR UPPER(o.OBJECT_NAME) LIKE UPPER(:nameFilter))
-                ORDER BY o.OBJECT_NAME
+                LEFT JOIN USER_TAB_COMMENTS c
+                    ON c.TABLE_NAME = o.OBJECT_NAME
+                    AND c.TABLE_TYPE = o.OBJECT_TYPE
+                WHERE o.OBJECT_TYPE IN (
+                          'TABLE','VIEW','PROCEDURE','FUNCTION',
+                          'PACKAGE','TRIGGER','SEQUENCE','SYNONYM')
+                  AND UPPER(o.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
+                ORDER BY o.OBJECT_TYPE, o.OBJECT_NAME
                 """;
             paramObj = new { nameFilter };
         }
         else
         {
-            var typeFilter = includeViews ? "o.OBJECT_TYPE IN ('TABLE','VIEW')" : "o.OBJECT_TYPE = 'TABLE'";
-            sql = $"""
+            sql = """
                 SELECT
                     o.OWNER             AS "Schema",
                     o.OBJECT_NAME       AS "Name",
@@ -95,18 +70,22 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                     c.COMMENTS          AS "Comment"
                 FROM ALL_OBJECTS o
                 LEFT JOIN ALL_TAB_COMMENTS c
-                    ON c.OWNER = o.OWNER AND c.TABLE_NAME = o.OBJECT_NAME
-                WHERE {typeFilter}
+                    ON c.OWNER = o.OWNER
+                    AND c.TABLE_NAME = o.OBJECT_NAME
+                    AND c.TABLE_TYPE = o.OBJECT_TYPE
+                WHERE o.OBJECT_TYPE IN (
+                          'TABLE','VIEW','PROCEDURE','FUNCTION',
+                          'PACKAGE','TRIGGER','SEQUENCE','SYNONYM')
                   AND UPPER(o.OWNER) LIKE UPPER(:schemaFilter)
-                  AND (:nameFilter IS NULL OR UPPER(o.OBJECT_NAME) LIKE UPPER(:nameFilter))
-                ORDER BY o.OWNER, o.OBJECT_NAME
+                  AND UPPER(o.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
+                ORDER BY o.OWNER, o.OBJECT_TYPE, o.OBJECT_NAME
                 """;
-            paramObj = new { nameFilter, schemaFilter };
+            // Properties in SQL-appearance order: schemaFilter first, nameFilter second.
+            paramObj = new { schemaFilter, nameFilter };
         }
 
         LogQuery(sql, paramObj);
-        var rows = await conn.QueryAsync(
-            new CommandDefinition(sql, new OracleDynamicParameters(paramObj), cancellationToken: ct));
+        var rows = await conn.QueryAsync(new CommandDefinition(sql, paramObj, cancellationToken: ct));
         return rows.Select(r => new TableInfo
         {
             Schema  = (string)r.Schema,
@@ -140,6 +119,8 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                 WHERE TABLE_NAME = :tableName
                 """;
 
+            // The PK sub-query includes TABLE_NAME in its SELECT so that :tableName
+            // is referenced only once (in the outer WHERE), not twice.
             colSql = """
                 SELECT
                     col.COLUMN_NAME                                         AS "Name",
@@ -151,16 +132,15 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                     cc.COMMENTS                                             AS "Comment"
                 FROM USER_TAB_COLUMNS col
                 LEFT JOIN USER_COL_COMMENTS cc
-                    ON cc.TABLE_NAME = col.TABLE_NAME
+                    ON cc.TABLE_NAME  = col.TABLE_NAME
                     AND cc.COLUMN_NAME = col.COLUMN_NAME
                 LEFT JOIN (
-                    SELECT acc.COLUMN_NAME
+                    SELECT acc.TABLE_NAME, acc.COLUMN_NAME
                     FROM USER_CONSTRAINTS ac
-                    JOIN USER_CONS_COLUMNS acc
-                        ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
+                    JOIN USER_CONS_COLUMNS acc ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
                     WHERE ac.CONSTRAINT_TYPE = 'P'
-                      AND ac.TABLE_NAME = :tableName
-                ) pk ON pk.COLUMN_NAME = col.COLUMN_NAME
+                ) pk ON pk.TABLE_NAME = col.TABLE_NAME
+                       AND pk.COLUMN_NAME = col.COLUMN_NAME
                 WHERE col.TABLE_NAME = :tableName
                 ORDER BY col.COLUMN_ID
                 """;
@@ -174,9 +154,11 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                 SELECT COMMENTS
                 FROM ALL_TAB_COMMENTS
                 WHERE TABLE_NAME = :tableName
-                  AND OWNER = :ownerName
+                  AND OWNER      = :ownerName
                 """;
 
+            // Again the PK sub-query includes OWNER/TABLE_NAME to avoid repeating
+            // the bind parameters inside the sub-query.
             colSql = """
                 SELECT
                     col.COLUMN_NAME                                         AS "Name",
@@ -188,40 +170,35 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                     cc.COMMENTS                                             AS "Comment"
                 FROM ALL_TAB_COLUMNS col
                 LEFT JOIN ALL_COL_COMMENTS cc
-                    ON cc.OWNER = col.OWNER
-                    AND cc.TABLE_NAME = col.TABLE_NAME
+                    ON cc.OWNER        = col.OWNER
+                    AND cc.TABLE_NAME  = col.TABLE_NAME
                     AND cc.COLUMN_NAME = col.COLUMN_NAME
                 LEFT JOIN (
-                    SELECT acc.COLUMN_NAME
+                    SELECT acc.OWNER, acc.TABLE_NAME, acc.COLUMN_NAME
                     FROM ALL_CONSTRAINTS ac
                     JOIN ALL_CONS_COLUMNS acc
-                        ON acc.OWNER = ac.OWNER
+                        ON acc.OWNER           = ac.OWNER
                         AND acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
                     WHERE ac.CONSTRAINT_TYPE = 'P'
-                      AND ac.TABLE_NAME = :tableName
-                      AND ac.OWNER = :ownerName
-                ) pk ON pk.COLUMN_NAME = col.COLUMN_NAME
+                ) pk ON pk.OWNER       = col.OWNER
+                       AND pk.TABLE_NAME  = col.TABLE_NAME
+                       AND pk.COLUMN_NAME = col.COLUMN_NAME
                 WHERE col.TABLE_NAME = :tableName
-                  AND col.OWNER = :ownerName
+                  AND col.OWNER      = :ownerName
                 ORDER BY col.COLUMN_ID
                 """;
 
+            // Properties in SQL-appearance order: tableName first, ownerName second.
             paramObj = new { tableName = tableUpper, ownerName = ownerUpper };
         }
 
         LogQuery(tableCommentSql, paramObj);
         var tableComment = await conn.ExecuteScalarAsync<string?>(
-            new CommandDefinition(
-                tableCommentSql,
-                new OracleDynamicParameters(paramObj),
-                cancellationToken: ct));
+            new CommandDefinition(tableCommentSql, paramObj, cancellationToken: ct));
 
         LogQuery(colSql, paramObj);
         var cols = await conn.QueryAsync(
-            new CommandDefinition(
-                colSql,
-                new OracleDynamicParameters(paramObj),
-                cancellationToken: ct));
+            new CommandDefinition(colSql, paramObj, cancellationToken: ct));
 
         return new TableSchema
         {
@@ -261,7 +238,7 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                     NULL            AS "Comment"
                 FROM USER_PROCEDURES p
                 WHERE p.OBJECT_TYPE IN ('PROCEDURE','FUNCTION','PACKAGE')
-                  AND (:nameFilter IS NULL OR UPPER(p.OBJECT_NAME) LIKE UPPER(:nameFilter))
+                  AND UPPER(p.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
                 ORDER BY p.OBJECT_NAME
                 """;
             paramObj = new { nameFilter };
@@ -275,17 +252,17 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                     p.OBJECT_TYPE   AS "Type",
                     NULL            AS "Comment"
                 FROM ALL_PROCEDURES p
-                WHERE UPPER(p.OWNER) LIKE UPPER(:schemaFilter)
+                WHERE UPPER(p.OWNER)       LIKE UPPER(:schemaFilter)
+                  AND UPPER(p.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
                   AND p.OBJECT_TYPE IN ('PROCEDURE','FUNCTION','PACKAGE')
-                  AND (:nameFilter IS NULL OR UPPER(p.OBJECT_NAME) LIKE UPPER(:nameFilter))
                 ORDER BY p.OWNER, p.OBJECT_NAME
                 """;
-            paramObj = new { nameFilter, schemaFilter };
+            // Properties in SQL-appearance order: schemaFilter first, nameFilter second.
+            paramObj = new { schemaFilter, nameFilter };
         }
 
         LogQuery(sql, paramObj);
-        var rows = await conn.QueryAsync(
-            new CommandDefinition(sql, new OracleDynamicParameters(paramObj), cancellationToken: ct));
+        var rows = await conn.QueryAsync(new CommandDefinition(sql, paramObj, cancellationToken: ct));
         return rows.Select(r => new RoutineInfo
         {
             Schema     = (string)r.Schema,
@@ -342,16 +319,16 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
                 LEFT JOIN ALL_CONSTRAINTS c
                     ON c.OWNER = i.OWNER AND c.INDEX_NAME = i.INDEX_NAME
                     AND c.CONSTRAINT_TYPE = 'P'
-                WHERE ic.TABLE_NAME = :tableName
+                WHERE ic.TABLE_NAME  = :tableName
                   AND ic.TABLE_OWNER = :ownerName
                 ORDER BY ic.INDEX_NAME, ic.COLUMN_POSITION
                 """;
+            // Properties in SQL-appearance order: tableName first, ownerName second.
             paramObj = new { tableName = tableUpper, ownerName = ownerUpper };
         }
 
         LogQuery(sql, paramObj);
-        var rows = await conn.QueryAsync(
-            new CommandDefinition(sql, new OracleDynamicParameters(paramObj), cancellationToken: ct));
+        var rows = await conn.QueryAsync(new CommandDefinition(sql, paramObj, cancellationToken: ct));
 
         return rows
             .GroupBy(r => new { IndexName = (string)r.IndexName })

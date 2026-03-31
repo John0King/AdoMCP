@@ -7,13 +7,11 @@ namespace AdoMcpServer.Services.Providers;
 
 internal sealed class MySqlDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
-    public async Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct)
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
     {
-        var typeFilter = includeViews
-            ? "TABLE_TYPE IN ('BASE TABLE','VIEW')"
-            : "TABLE_TYPE = 'BASE TABLE'";
-
+        // UNION three information_schema views so that tables, routines and triggers
+        // all appear in a single result set.
         var sql = $"""
             SELECT
                 TABLE_SCHEMA    AS `Schema`,
@@ -22,9 +20,31 @@ internal sealed class MySqlDbProvider(ILogger logger) : DbProviderBase(logger), 
                 TABLE_COMMENT   AS `Comment`
             FROM information_schema.TABLES
             WHERE ((@schemaFilter IS NULL AND TABLE_SCHEMA = DATABASE()) OR TABLE_SCHEMA LIKE @schemaFilter)
-              AND {typeFilter}
               AND (@nameFilter IS NULL OR TABLE_NAME LIKE @nameFilter)
-            ORDER BY TABLE_SCHEMA, TABLE_NAME
+
+            UNION ALL
+
+            SELECT
+                ROUTINE_SCHEMA  AS `Schema`,
+                ROUTINE_NAME    AS `Name`,
+                ROUTINE_TYPE    AS `Type`,
+                NULL            AS `Comment`
+            FROM information_schema.ROUTINES
+            WHERE ((@schemaFilter IS NULL AND ROUTINE_SCHEMA = DATABASE()) OR ROUTINE_SCHEMA LIKE @schemaFilter)
+              AND (@nameFilter IS NULL OR ROUTINE_NAME LIKE @nameFilter)
+
+            UNION ALL
+
+            SELECT
+                TRIGGER_SCHEMA  AS `Schema`,
+                TRIGGER_NAME    AS `Name`,
+                'TRIGGER'       AS `Type`,
+                NULL            AS `Comment`
+            FROM information_schema.TRIGGERS
+            WHERE ((@schemaFilter IS NULL AND TRIGGER_SCHEMA = DATABASE()) OR TRIGGER_SCHEMA LIKE @schemaFilter)
+              AND (@nameFilter IS NULL OR TRIGGER_NAME LIKE @nameFilter)
+
+            ORDER BY `Schema`, `Name`
             """;
 
         var param = new { nameFilter, schemaFilter };

@@ -7,11 +7,11 @@ namespace AdoMcpServer.Services.Providers;
 
 internal sealed class SqliteDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
-    public async Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct)
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
     {
         // SQLite has no schema concept; schemaFilter is ignored.
-        var typeFilter = includeViews ? "type IN ('table','view')" : "type = 'table'";
+        // sqlite_master holds tables, views, triggers and indexes as named objects.
         var sql = $"""
             SELECT
                 '' AS Schema,
@@ -19,10 +19,10 @@ internal sealed class SqliteDbProvider(ILogger logger) : DbProviderBase(logger),
                 UPPER(type) AS Type,
                 NULL AS Comment
             FROM sqlite_master
-            WHERE {typeFilter}
+            WHERE type IN ('table','view','trigger')
               AND name NOT LIKE 'sqlite_%'
               AND (@nameFilter IS NULL OR name LIKE @nameFilter)
-            ORDER BY name
+            ORDER BY type, name
             """;
 
         var param = new { nameFilter };

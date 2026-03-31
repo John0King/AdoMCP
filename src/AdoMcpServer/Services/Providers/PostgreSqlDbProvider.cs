@@ -7,13 +7,11 @@ namespace AdoMcpServer.Services.Providers;
 
 internal sealed class PostgreSqlDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
-    public async Task<List<TableInfo>> ListTablesAsync(
-        DbConnection conn, bool includeViews, string? nameFilter, string? schemaFilter, CancellationToken ct)
+    public async Task<List<TableInfo>> ListDbObjectsAsync(
+        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
     {
-        var typeFilter = includeViews
-            ? "c.relkind IN ('r','v','m')"
-            : "c.relkind = 'r'";
-
+        // UNION pg_class (tables, views, sequences) and pg_proc (functions, procedures)
+        // to give a complete picture of user-defined schema objects.
         var sql = $"""
             SELECT
                 n.nspname                                           AS "Schema",
@@ -22,15 +20,36 @@ internal sealed class PostgreSqlDbProvider(ILogger logger) : DbProviderBase(logg
                     WHEN 'r' THEN 'TABLE'
                     WHEN 'v' THEN 'VIEW'
                     WHEN 'm' THEN 'MATERIALIZED VIEW'
+                    WHEN 'S' THEN 'SEQUENCE'
+                    WHEN 'p' THEN 'TABLE'
                 END                                                 AS "Type",
                 obj_description(c.oid, 'pg_class')                 AS "Comment"
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE {typeFilter}
+            WHERE c.relkind IN ('r','v','m','S','p')
               AND n.nspname NOT IN ('pg_catalog','information_schema')
               AND (@nameFilter IS NULL OR c.relname ILIKE @nameFilter)
               AND (@schemaFilter IS NULL OR n.nspname ILIKE @schemaFilter)
-            ORDER BY n.nspname, c.relname
+
+            UNION ALL
+
+            SELECT
+                n.nspname                                           AS "Schema",
+                p.proname                                           AS "Name",
+                CASE p.prokind
+                    WHEN 'f' THEN 'FUNCTION'
+                    WHEN 'p' THEN 'PROCEDURE'
+                    WHEN 'a' THEN 'AGGREGATE'
+                    ELSE 'FUNCTION'
+                END                                                 AS "Type",
+                obj_description(p.oid, 'pg_proc')                  AS "Comment"
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname NOT IN ('pg_catalog','information_schema')
+              AND (@nameFilter IS NULL OR p.proname ILIKE @nameFilter)
+              AND (@schemaFilter IS NULL OR n.nspname ILIKE @schemaFilter)
+
+            ORDER BY "Schema", "Name"
             """;
 
         var param = new { nameFilter, schemaFilter };
