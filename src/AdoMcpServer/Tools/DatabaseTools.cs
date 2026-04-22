@@ -7,7 +7,6 @@ using AdoMcpServer.Services;
 using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
-using Microsoft.Data.Sqlite;
 using ModelContextProtocol.Server;
 
 namespace AdoMcpServer.Tools;
@@ -91,30 +90,6 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         return writer.ToString().TrimEnd();
     }
 
-    /// <summary>
-    /// Rewrites a SQLite connection string so that the <c>Data Source</c> value is an
-    /// absolute path.  In-memory databases (<c>:memory:</c> or empty source) and
-    /// already-absolute paths are returned unchanged.
-    /// </summary>
-    private static string ResolveSqliteDataSource(string connectionString)
-    {
-        var builder = new SqliteConnectionStringBuilder(connectionString);
-
-        var dataSource = builder.DataSource;
-
-        // Leave special values and already-absolute paths untouched.
-        if (string.IsNullOrEmpty(dataSource)
-            || dataSource.Equals(":memory:", StringComparison.OrdinalIgnoreCase)
-            || Path.IsPathRooted(dataSource))
-        {
-            return connectionString;
-        }
-
-        // Resolve relative path against the current working directory.
-        builder.DataSource = Path.GetFullPath(dataSource);
-        return builder.ToString();
-    }
-
     // CSV row types ────────────────────────────────────────────────────────────
 
     private sealed record ObjectCsvRow(
@@ -154,12 +129,13 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         The connection is immediately available to all other tools via its name.
         Supported dbType values: SqlServer | MySql | PostgreSql | Sqlite | Oracle
 
-        SQLite note: if the Data Source path in the connection string is relative (e.g. "Data Source=mydb.db"),
-        it is automatically resolved to an absolute path based on the current working directory.
-        Use an absolute path or ":memory:" to avoid any ambiguity.
+        IMPORTANT — SQLite paths: always supply an absolute path in the Data Source (e.g. "Data Source=/home/user/project/mydb.db").
+        If you only have a relative path, resolve it to an absolute path yourself (based on your current working directory)
+        before calling this tool. The server cannot determine your working directory.
+        The special value ":memory:" is also accepted for an in-memory database.
         """)]
     public async Task<string> AddConnectionAsync(
-        [Description("Connection string. SQLite example: \"Data Source=mydb.db\" or \"Data Source=/absolute/path/mydb.db\". SQL Server example: \"Server=host;Database=db;User Id=sa;Password=***;TrustServerCertificate=true;\"")]
+        [Description("Connection string. For SQLite you MUST use an absolute path: e.g. \"Data Source=/absolute/path/to/mydb.db\" or \"Data Source=:memory:\". For SQL Server: \"Server=host;Database=db;User Id=sa;Password=***;TrustServerCertificate=true;\"")]
         string connectionString,
         [Description("Database engine type: SqlServer | MySql | PostgreSql | Sqlite | Oracle")]
         string dbType,
@@ -176,11 +152,6 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
             var validValues = string.Join(", ", Enum.GetNames<Models.DbType>());
             return $"Error: unrecognized database type '{dbType}'. Supported values: {validValues}";
         }
-
-        // For SQLite, ensure the Data Source is an absolute path so the file is
-        // always found regardless of the working directory at the time of the call.
-        if (parsedDbType == Models.DbType.Sqlite)
-            connectionString = ResolveSqliteDataSource(connectionString);
 
         var connectionName = string.IsNullOrWhiteSpace(name)
             ? $"{parsedDbType.ToString().ToLower()}-{Guid.NewGuid().ToString("N")[..6]}"
