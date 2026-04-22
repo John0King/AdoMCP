@@ -21,10 +21,6 @@ internal interface IDbProvider
     Task<TableSchema> GetTableSchemaAsync(
         DbConnection conn, string tableName, string? schema, CancellationToken ct);
 
-    /// <summary>Lists stored procedures and functions.</summary>
-    Task<List<RoutineInfo>> ListRoutinesAsync(
-        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct);
-
     /// <summary>Returns all indexes defined on a single table.</summary>
     Task<List<IndexInfo>> GetIndexesAsync(
         DbConnection conn, string tableName, string? schema, CancellationToken ct);

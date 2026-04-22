@@ -102,35 +102,6 @@ internal sealed class MySqlDbProvider(ILogger logger) : DbProviderBase(logger), 
         };
     }
 
-    public async Task<List<RoutineInfo>> ListRoutinesAsync(
-        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
-    {
-        const string sql = """
-            SELECT
-                ROUTINE_SCHEMA      AS `Schema`,
-                ROUTINE_NAME        AS `Name`,
-                ROUTINE_TYPE        AS `Type`,
-                ROUTINE_DEFINITION  AS `Definition`,
-                NULL                AS `Comment`
-            FROM information_schema.ROUTINES
-            WHERE ((@schemaFilter IS NULL AND ROUTINE_SCHEMA = DATABASE()) OR ROUTINE_SCHEMA LIKE @schemaFilter)
-              AND (@nameFilter IS NULL OR ROUTINE_NAME LIKE @nameFilter)
-            ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME
-            """;
-
-        var param = new { nameFilter, schemaFilter };
-        LogQuery(sql, param);
-        var rows = await conn.QueryAsync(new CommandDefinition(sql, param, cancellationToken: ct));
-        return rows.Select(r => new RoutineInfo
-        {
-            Schema     = (string)r.Schema,
-            Name       = (string)r.Name,
-            Type       = (string)r.Type,
-            Definition = r.Definition as string,
-            Comment    = null,
-        }).ToList();
-    }
-
     public async Task<List<IndexInfo>> GetIndexesAsync(
         DbConnection conn, string tableName, string? schema, CancellationToken ct)
     {

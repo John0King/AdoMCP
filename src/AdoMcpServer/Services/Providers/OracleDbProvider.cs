@@ -222,61 +222,6 @@ internal sealed class OracleDbProvider(ILogger logger) : DbProviderBase(logger),
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // list routines
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public async Task<List<RoutineInfo>> ListRoutinesAsync(
-        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
-    {
-        string sql;
-        object paramObj;
-
-        if (schemaFilter is null)
-        {
-            sql = """
-                SELECT
-                    USER            AS "Schema",
-                    p.OBJECT_NAME   AS "Name",
-                    p.OBJECT_TYPE   AS "Type",
-                    NULL            AS "Comment"
-                FROM USER_PROCEDURES p
-                WHERE p.OBJECT_TYPE IN ('PROCEDURE','FUNCTION','PACKAGE')
-                  AND UPPER(p.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
-                ORDER BY p.OBJECT_NAME
-                """;
-            paramObj = new { nameFilter };
-        }
-        else
-        {
-            sql = """
-                SELECT
-                    p.OWNER         AS "Schema",
-                    p.OBJECT_NAME   AS "Name",
-                    p.OBJECT_TYPE   AS "Type",
-                    NULL            AS "Comment"
-                FROM ALL_PROCEDURES p
-                WHERE UPPER(p.OWNER)       LIKE UPPER(:schemaFilter)
-                  AND UPPER(p.OBJECT_NAME) LIKE UPPER(NVL(:nameFilter, '%'))
-                  AND p.OBJECT_TYPE IN ('PROCEDURE','FUNCTION','PACKAGE')
-                ORDER BY p.OWNER, p.OBJECT_NAME
-                """;
-            // Properties in SQL-appearance order: schemaFilter first, nameFilter second.
-            paramObj = new { schemaFilter, nameFilter };
-        }
-
-        LogQuery(sql, paramObj);
-        var rows = await conn.QueryAsync(new CommandDefinition(sql, paramObj, cancellationToken: ct));
-        return rows.Select(r => new RoutineInfo
-        {
-            Schema     = (string)r.Schema,
-            Name       = (string)r.Name,
-            Type       = (string)r.Type,
-            Definition = null,  // Oracle source retrieval requires per-object calls; omit for brevity
-            Comment    = null,
-        }).ToList();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
     // indexes
     // ─────────────────────────────────────────────────────────────────────────
 

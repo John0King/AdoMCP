@@ -120,15 +120,6 @@ public class DatabaseService(
             return await GetProvider(cfg).GetTableSchemaAsync(conn, tableName, schema, ct);
     }
 
-    public async Task<List<RoutineInfo>> ListRoutinesAsync(
-        string connectionName, string? nameFilter = null, string? schemaFilter = null,
-        CancellationToken ct = default)
-    {
-        var (cfg, conn) = await OpenAsync(connectionName, ct);
-        await using (conn)
-            return await GetProvider(cfg).ListRoutinesAsync(conn, nameFilter, schemaFilter, ct);
-    }
-
     public async Task<List<IndexInfo>> GetTableIndexesAsync(
         string connectionName, string tableName, string? schema = null, CancellationToken ct = default)
     {

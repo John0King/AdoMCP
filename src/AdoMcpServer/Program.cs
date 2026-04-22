@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CLI definition (System.CommandLine)
+// CLI definition
 // ─────────────────────────────────────────────────────────────────────────────
 
 var httpOption = new Option<bool>("--http")
@@ -16,8 +16,8 @@ var httpOption = new Option<bool>("--http")
     Description = "Start in HTTP/SSE mode instead of the default stdio mode.",
 };
 
-// --stdio is accepted for backwards-compatibility (it is the default; this flag
-// is a no-op but avoids errors when MCP clients pass it explicitly).
+// --stdio is accepted for backwards-compatibility; it is a no-op because stdio
+// is the default, but some MCP clients pass it explicitly.
 var stdioOption = new Option<bool>("--stdio")
 {
     Description = "Start in stdio mode (default; accepted for compatibility).",
@@ -36,13 +36,11 @@ var rootCommand = new RootCommand(
     allowAnySqlOption,
 };
 
-// Allow unrecognised tokens to pass through so that standard host arguments
-// such as --urls or --environment still work.
+// Allow unrecognised tokens (e.g. --urls, --environment) to pass through to the host.
 rootCommand.TreatUnmatchedTokensAsErrors = false;
 
 rootCommand.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
 {
-    // HTTP mode when --http is given or when the env-var says so.
     bool isHttp = parseResult.GetValue(httpOption)
         || string.Equals(
                Environment.GetEnvironmentVariable("ADOMCP_MODE"),
@@ -51,59 +49,67 @@ rootCommand.SetAction(async (ParseResult parseResult, CancellationToken ct) =>
 
     bool allowAnySql = parseResult.GetValue(allowAnySqlOption);
 
-    // Forward any unrecognised tokens (e.g. --urls, --environment).
+    // Forward any unrecognised tokens (e.g. --urls, --environment) to the host.
     var extraArgs = parseResult.UnmatchedTokens.ToArray();
 
     if (isHttp)
-    {
-        // ─────────────────────────────────────────────────────────────────────
-        // HTTP / SSE mode – full ASP.NET Core web application
-        // ─────────────────────────────────────────────────────────────────────
-        var builder = WebApplication.CreateBuilder(extraArgs);
-
-        ConfigureConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-        ConfigureServices(builder.Services, builder.Configuration, allowAnySql);
-        builder.Services
-            .AddMcpServer()
-            .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
-            .WithHttpTransport();
-
-        var app = builder.Build();
-        app.MapMcp("/mcp");
-        await app.RunAsync(ct);
-    }
+        await RunHttpModeAsync(extraArgs, allowAnySql, ct);
     else
-    {
-        // ─────────────────────────────────────────────────────────────────────
-        // stdio mode – pure console host (no Kestrel / web server started).
-        // stdout is the MCP JSON-RPC transport channel; ALL logging MUST go
-        // to stderr so it never corrupts the message stream.
-        // ─────────────────────────────────────────────────────────────────────
-        var hostBuilder = Host.CreateApplicationBuilder(extraArgs);
-
-        ConfigureConfiguration(hostBuilder.Configuration, hostBuilder.Environment.EnvironmentName);
-        hostBuilder.Logging.ClearProviders();
-        hostBuilder.Logging.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
-        ConfigureServices(hostBuilder.Services, hostBuilder.Configuration, allowAnySql);
-        hostBuilder.Services
-            .AddMcpServer()
-            .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
-            .WithStdioServerTransport();
-
-        var host = hostBuilder.Build();
-        await host.RunAsync(ct);
-    }
+        await RunStdioModeAsync(extraArgs, allowAnySql, ct);
 });
 
-var result = rootCommand.Parse(args);
-return await result.InvokeAsync();
+return await rootCommand.Parse(args).InvokeAsync();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP / SSE mode — full ASP.NET Core web application
+// ─────────────────────────────────────────────────────────────────────────────
+
+static async Task RunHttpModeAsync(string[] args, bool allowAnySql, CancellationToken ct)
+{
+    var builder = WebApplication.CreateBuilder(args);
+
+    ConfigureConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+    ConfigureServices(builder.Services, builder.Configuration, allowAnySql);
+    builder.Services
+        .AddMcpServer()
+        .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
+        .WithHttpTransport();
+
+    var app = builder.Build();
+    app.MapMcp("/mcp");
+    await app.RunAsync(ct);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// stdio mode — pure console host (no Kestrel / web server started).
+// stdout is the MCP JSON-RPC transport channel; ALL logging MUST go to stderr
+// so it never corrupts the message stream.
+// ─────────────────────────────────────────────────────────────────────────────
+
+static async Task RunStdioModeAsync(string[] args, bool allowAnySql, CancellationToken ct)
+{
+    var builder = Host.CreateApplicationBuilder(args);
+
+    ConfigureConfiguration(builder.Configuration, builder.Environment.EnvironmentName);
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
+    ConfigureServices(builder.Services, builder.Configuration, allowAnySql);
+    builder.Services
+        .AddMcpServer()
+        .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
+        .WithStdioServerTransport();
+
+    await builder.Build().RunAsync(ct);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared setup helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// <summary>Rebuilds the configuration pipeline, layering JSON files, environment variables
+/// (prefixed <c>ADOMCP_</c>), and user secrets on top of each other.</summary>
 static void ConfigureConfiguration(IConfigurationBuilder config, string environmentName)
 {
     config.Sources.Clear();
@@ -115,6 +121,7 @@ static void ConfigureConfiguration(IConfigurationBuilder config, string environm
         .AddUserSecrets<Program>(optional: true);
 }
 
+/// <summary>Registers core application services and parses startup flags.</summary>
 static void ConfigureServices(
     IServiceCollection services, IConfiguration configuration, bool allowAnySql)
 {
