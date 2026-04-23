@@ -112,45 +112,6 @@ internal sealed class SqlServerDbProvider(ILogger logger) : DbProviderBase(logge
         };
     }
 
-    public async Task<List<RoutineInfo>> ListRoutinesAsync(
-        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
-    {
-        const string sql = """
-            SELECT
-                s.name                      AS [Schema],
-                o.name                      AS [Name],
-                CASE o.type
-                    WHEN 'P'  THEN 'PROCEDURE'
-                    WHEN 'FN' THEN 'FUNCTION'
-                    WHEN 'TF' THEN 'TABLE-VALUED FUNCTION'
-                    ELSE o.type
-                END                         AS [Type],
-                OBJECT_DEFINITION(o.object_id) AS [Definition],
-                ep.value                    AS [Comment]
-            FROM sys.objects o
-            JOIN sys.schemas s ON s.schema_id = o.schema_id
-            LEFT JOIN sys.extended_properties ep
-                ON ep.major_id = o.object_id AND ep.minor_id = 0
-                AND ep.name = 'MS_Description' AND ep.class = 1
-            WHERE o.type IN ('P','FN','TF','IF')
-              AND (@nameFilter IS NULL OR o.name LIKE @nameFilter)
-              AND (@schemaFilter IS NULL OR s.name LIKE @schemaFilter)
-            ORDER BY s.name, o.name
-            """;
-
-        var param = new { nameFilter, schemaFilter };
-        LogQuery(sql, param);
-        var rows = await conn.QueryAsync(new CommandDefinition(sql, param, cancellationToken: ct));
-        return rows.Select(r => new RoutineInfo
-        {
-            Schema     = (string)r.Schema,
-            Name       = (string)r.Name,
-            Type       = (string)r.Type,
-            Definition = r.Definition as string,
-            Comment    = r.Comment as string,
-        }).ToList();
-    }
-
     public async Task<List<IndexInfo>> GetIndexesAsync(
         DbConnection conn, string tableName, string? schema, CancellationToken ct)
     {

@@ -64,13 +64,6 @@ internal sealed class SqliteDbProvider(ILogger logger) : DbProviderBase(logger),
         };
     }
 
-    public Task<List<RoutineInfo>> ListRoutinesAsync(
-        DbConnection conn, string? nameFilter, string? schemaFilter, CancellationToken ct)
-    {
-        // SQLite does not support stored procedures or functions.
-        return Task.FromResult(new List<RoutineInfo>());
-    }
-
     public async Task<List<IndexInfo>> GetIndexesAsync(
         DbConnection conn, string tableName, string? schema, CancellationToken ct)
     {

@@ -36,16 +36,6 @@ public class TableSchema
     public List<ColumnInfo> Columns { get; set; } = [];
 }
 
-/// <summary>Metadata about a stored procedure or function.</summary>
-public class RoutineInfo
-{
-    public string Schema { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty;   // PROCEDURE | FUNCTION
-    public string? Definition { get; set; }
-    public string? Comment { get; set; }
-}
-
 /// <summary>Metadata about an index.</summary>
 public class IndexInfo
 {

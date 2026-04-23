@@ -30,9 +30,6 @@ public interface IDatabaseService
     /// <summary>Returns the full schema of a table, including column types and comments.</summary>
     Task<TableSchema> GetTableSchemaAsync(string connectionName, string tableName, string? schema = null, CancellationToken ct = default);
 
-    /// <summary>Lists stored procedures and functions in the target database.</summary>
-    Task<List<RoutineInfo>> ListRoutinesAsync(string connectionName, string? nameFilter = null, string? schemaFilter = null, CancellationToken ct = default);
-
     /// <summary>Lists indexes defined on a specific table.</summary>
     Task<List<IndexInfo>> GetTableIndexesAsync(string connectionName, string tableName, string? schema = null, CancellationToken ct = default);
 

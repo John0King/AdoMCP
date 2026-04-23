@@ -98,12 +98,6 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         [property: Name("objectName")] string ObjectName,
         [property: Name("comment")]    string? Comment);
 
-    private sealed record RoutineCsvRow(
-        [property: Name("schema")]      string Schema,
-        [property: Name("routineType")] string RoutineType,
-        [property: Name("routineName")] string RoutineName,
-        [property: Name("comment")]     string? Comment);
-
     private sealed record ConnectionCsvRow(
         [property: Name("name")]        string Name,
         [property: Name("dbType")]      string DbType,
@@ -134,9 +128,14 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         Dynamically add (or replace) a database connection at runtime without modifying config files.
         The connection is immediately available to all other tools via its name.
         Supported dbType values: SqlServer | MySql | PostgreSql | Sqlite | Oracle
+
+        IMPORTANT — SQLite paths: always supply an absolute path in the Data Source (e.g. "Data Source=/home/user/project/mydb.db").
+        If you only have a relative path, resolve it to an absolute path yourself (based on your current working directory)
+        before calling this tool. The server cannot determine your working directory.
+        The special value ":memory:" is also accepted for an in-memory database.
         """)]
     public async Task<string> AddConnectionAsync(
-        [Description("Connection string, e.g. for SQL Server: \"Server=host;Database=db;User Id=sa;Password=***;TrustServerCertificate=true;\"")]
+        [Description("Connection string. For SQLite you MUST use an absolute path: e.g. \"Data Source=/absolute/path/to/mydb.db\" or \"Data Source=:memory:\". For SQL Server: \"Server=host;Database=db;User Id=sa;Password=***;TrustServerCertificate=true;\"")]
         string connectionString,
         [Description("Database engine type: SqlServer | MySql | PostgreSql | Sqlite | Oracle")]
         string dbType,
@@ -289,42 +288,6 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         {
             var result = await db.GetTableIndexesAsync(connectionName, tableName, schema, cancellationToken);
             return JsonSerializer.Serialize(result, JsonOpts);
-        }
-        catch (Exception ex)
-        {
-            return $"Error: {ex.Message}";
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // list_routines
-    // ─────────────────────────────────────────────────────────────────────────
-
-    [McpServerTool(Name = "list_routines")]
-    [Description("""
-        List stored procedures and functions in the database, including schema, type, and comment.
-        SQLite does not support stored procedures and will return an empty list.
-        Supports filtering by schema and name keyword.
-        Returns CSV (schema,routineType,routineName,comment).
-        """)]
-    public async Task<string> ListRoutinesAsync(
-        [Description("Database connection name.")]
-        string connectionName,
-        [Description("Filter by name. Without wildcards, treated as a substring search. Supports SQL LIKE wildcards. Leave empty to return all.")]
-        string? namePattern = null,
-        [Description("Filter by schema name (SQL Server/PostgreSQL: schema; MySQL: database; Oracle: owner/user). Supports SQL LIKE wildcards. Leave empty to return all in the current schema/user.")]
-        string? schemaFilter = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var result = await db.ListRoutinesAsync(connectionName, ToLikeFilter(namePattern), ToLikeFilter(schemaFilter), cancellationToken);
-            if (result.Count == 0)
-                return namePattern is null && schemaFilter is null
-                    ? "No stored procedures or functions found."
-                    : $"No routines matched the filters (namePattern='{namePattern}', schema='{schemaFilter}').";
-
-            return ToCsv(result.Select(r => new RoutineCsvRow(r.Schema, r.Type, r.Name, r.Comment)));
         }
         catch (Exception ex)
         {
