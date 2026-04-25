@@ -131,21 +131,6 @@ Dynamically-added connections exist only for the lifetime of the process; restar
 
 ---
 
-## Using with Claude Desktop / Cursor
-
-### stdio mode (recommended)
-
-```json
-{
-  "mcpServers": {
-    "adomcp": {
-      "command": "dotnet",
-      "args": ["run", "--project", "/path/to/src/AdoMcp"]
-    }
-  }
-}
-```
-
 #### Via dnx (after NuGet publish)
 
 ```json
@@ -153,7 +138,7 @@ Dynamically-added connections exist only for the lifetime of the process; restar
   "mcpServers": {
     "adomcp": {
       "command": "dnx",
-      "args": ["AdoMcp"]
+      "args": ["-y","AdoMcp"]
     }
   }
 }
@@ -163,7 +148,7 @@ Dynamically-added connections exist only for the lifetime of the process; restar
 
 Start the server first:
 ```bash
-dotnet run --project src/AdoMcp -- --http
+dnx -y AdoMcp -- --http
 ```
 
 Then configure the client:
@@ -201,14 +186,6 @@ To publish to the official MCP Registry:
 2. Push a version tag such as `v1.0.1`, or manually run the `Publish to NuGet and MCP Registry` GitHub Actions workflow.
 3. The workflow publishes the NuGet package, authenticates with GitHub OIDC, and publishes `server.json` to the MCP Registry.
 
-### Smithery
-
-This server is also listed on the [Smithery MCP registry](https://smithery.ai/).
-The `smithery.yaml` file at the repository root describes how to launch the server.
-
-To publish to Smithery:
-1. Publish the NuGet package to [NuGet.org](https://www.nuget.org/): `dotnet pack -c Release && dotnet nuget push ...`
-2. Submit the repository URL at [smithery.ai/new](https://smithery.ai/new) — Smithery will read `smithery.yaml` automatically.
 
 ## Build & Pack
 
