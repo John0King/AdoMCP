@@ -2,14 +2,14 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using AdoMcpServer.Models;
-using AdoMcpServer.Services;
+using AdoMcp.Models;
+using AdoMcp.Services;
 using CsvHelper;
 using CsvHelper.Configuration;
 using CsvHelper.Configuration.Attributes;
 using ModelContextProtocol.Server;
 
-namespace AdoMcpServer.Tools;
+namespace AdoMcp.Tools;
 
 /// <summary>MCP tools that expose database metadata and query execution to AI models.</summary>
 [McpServerToolType]
@@ -367,7 +367,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         if (!serverOptions.AllowAnySql)
             return """
                 Error: execute_sql is disabled. Start the server with --allow-any-sql to enable write operations.
-                Example: dotnet run --project src/AdoMcpServer -- --allow-any-sql
+                Example: dotnet run --project src/AdoMcp -- --allow-any-sql
                 """;
 
         try

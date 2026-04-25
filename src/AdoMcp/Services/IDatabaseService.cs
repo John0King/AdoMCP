@@ -1,6 +1,6 @@
-using AdoMcpServer.Models;
+using AdoMcp.Models;
 
-namespace AdoMcpServer.Services;
+namespace AdoMcp.Services;
 
 /// <summary>Provides database metadata and query execution capabilities.</summary>
 public interface IDatabaseService

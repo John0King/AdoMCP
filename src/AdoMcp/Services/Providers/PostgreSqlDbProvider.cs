@@ -1,9 +1,9 @@
 using System.Data.Common;
-using AdoMcpServer.Models;
+using AdoMcp.Models;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
-namespace AdoMcpServer.Services.Providers;
+namespace AdoMcp.Services.Providers;
 
 internal sealed class PostgreSqlDbProvider(ILogger logger) : DbProviderBase(logger), IDbProvider
 {
