@@ -13,8 +13,8 @@
     {
       "registryType": "nuget",
       "registryBaseUrl": "https://api.nuget.org/v3/index.json",
-      "identifier": "AdoMcp",
-      "version": "1.0.1",
+      "identifier": "adomcp",
+      "version": "1.0.2",
       "runtimeHint": "dnx",
       "transport": {
         "type": "stdio"
