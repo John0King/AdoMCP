@@ -1,8 +1,10 @@
-# AdoMcpServer
+# AdoMcp
 
-**AdoMcpServer** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that helps large language models (LLMs) understand database structure, read table comments, and execute SQL queries.
+**AdoMcp** is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that helps large language models (LLMs) understand database structure, read table comments, and execute SQL queries.
 
-AdoMcpServer 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 的数据库工具服务，帮助大型语言模型（LLM）理解数据库结构、读取表注释、执行 SQL 查询。
+AdoMcp 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 的数据库工具服务，帮助大型语言模型（LLM）理解数据库结构、读取表注释、执行 SQL 查询。
+
+<!-- mcp-name: io.github.John0King/adomcp -->
 
 ## MCP Tools
 
@@ -40,7 +42,7 @@ ORM support: [Dapper](https://github.com/DapperLib/Dapper) · [SqlSugarCore](htt
 
 ### 1. Configure database connections (optional)
 
-Edit `src/AdoMcpServer/appsettings.json` and add pre-configured connections under the `Databases` array.  
+Edit `src/AdoMcp/appsettings.json` and add pre-configured connections under the `Databases` array.  
 You can also skip this step entirely and let the LLM add connections dynamically via the `add_connection` tool.
 
 ```json
@@ -66,20 +68,20 @@ When stdin is redirected (i.e. launched by an MCP client), **stdio** mode is use
 When run interactively in a terminal, **HTTP/SSE** mode is used automatically.
 
 ```bash
-dotnet run --project src/AdoMcpServer
+dotnet run --project src/AdoMcp
 ```
 
 #### Specify mode manually
 
 ```bash
 # stdio mode (all logs go to stderr; stdout carries only MCP JSON-RPC)
-dotnet run --project src/AdoMcpServer -- --stdio
+dotnet run --project src/AdoMcp -- --stdio
 
 # HTTP/SSE mode (default: http://localhost:5100, MCP endpoint /mcp)
-dotnet run --project src/AdoMcpServer -- --http
+dotnet run --project src/AdoMcp -- --http
 
 # Via environment variable
-ADOMCP_MODE=http dotnet run --project src/AdoMcpServer
+ADOMCP_MODE=http dotnet run --project src/AdoMcp
 ```
 
 #### Enable execute_sql (write operations)
@@ -88,9 +90,9 @@ By default the `execute_sql` tool is **disabled** to prevent unauthorised writes
 Add `--allow-any-sql` to enable it:
 
 ```bash
-dotnet run --project src/AdoMcpServer -- --allow-any-sql
+dotnet run --project src/AdoMcp -- --allow-any-sql
 # Combine with transport mode
-dotnet run --project src/AdoMcpServer -- --http --allow-any-sql
+dotnet run --project src/AdoMcp -- --http --allow-any-sql
 ```
 
 ### 3. Run via NuGet / dnx (.NET 10)
@@ -99,12 +101,12 @@ After the package is published to NuGet.org, you can run it without cloning the 
 
 ```bash
 # Install as a global .NET tool once, then run directly
-dotnet tool install -g AdoMcpServer
+dotnet tool install -g AdoMcp
 adomcp
 
 # Or use dnx (.NET 10+) — installs and runs on demand
-dnx AdoMcpServer
-dnx AdoMcpServer -- --allow-any-sql
+dnx AdoMcp
+dnx AdoMcp -- --allow-any-sql
 ```
 
 ---
@@ -138,7 +140,7 @@ Dynamically-added connections exist only for the lifetime of the process; restar
   "mcpServers": {
     "adomcp": {
       "command": "dotnet",
-      "args": ["run", "--project", "/path/to/src/AdoMcpServer"]
+      "args": ["run", "--project", "/path/to/src/AdoMcp"]
     }
   }
 }
@@ -151,7 +153,7 @@ Dynamically-added connections exist only for the lifetime of the process; restar
   "mcpServers": {
     "adomcp": {
       "command": "dnx",
-      "args": ["AdoMcpServer"]
+      "args": ["AdoMcp"]
     }
   }
 }
@@ -161,7 +163,7 @@ Dynamically-added connections exist only for the lifetime of the process; restar
 
 Start the server first:
 ```bash
-dotnet run --project src/AdoMcpServer -- --http
+dotnet run --project src/AdoMcp -- --http
 ```
 
 Then configure the client:
@@ -188,9 +190,20 @@ All environment variables are prefixed with `ADOMCP_` (override `appsettings.jso
 
 ---
 
-## MCP Registry (Smithery)
+## MCP Registries
 
-This server is listed on the [Smithery MCP registry](https://smithery.ai/).
+### Official MCP Registry
+
+This repository now includes `server.json` for the official MCP Registry with the server name `io.github.John0King/adomcp`.
+
+To publish to the official MCP Registry:
+1. Publish the NuGet package `AdoMcp` to [NuGet.org](https://www.nuget.org/).
+2. Push a version tag such as `v1.0.1`, or manually run the `Publish to NuGet and MCP Registry` GitHub Actions workflow.
+3. The workflow publishes the NuGet package, authenticates with GitHub OIDC, and publishes `server.json` to the MCP Registry.
+
+### Smithery
+
+This server is also listed on the [Smithery MCP registry](https://smithery.ai/).
 The `smithery.yaml` file at the repository root describes how to launch the server.
 
 To publish to Smithery:
@@ -204,8 +217,8 @@ To publish to Smithery:
 dotnet build
 
 # Pack as a NuGet tool (supports dnx)
-dotnet pack src/AdoMcpServer -c Release -o ./nupkg
+dotnet pack src/AdoMcp -c Release -o ./nupkg
 
 # Publish to NuGet.org (set NUGET_API_KEY first)
-dotnet nuget push ./nupkg/AdoMcpServer.*.nupkg --source https://api.nuget.org/v3/index.json --api-key $NUGET_API_KEY
+dotnet nuget push ./nupkg/AdoMcp.*.nupkg --source https://api.nuget.org/v3/index.json --api-key $NUGET_API_KEY
 ```

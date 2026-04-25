@@ -1,4 +1,4 @@
-namespace AdoMcpServer.Models;
+namespace AdoMcp.Models;
 
 /// <summary>
 /// Metadata about any database object (table, view, procedure, function, trigger,

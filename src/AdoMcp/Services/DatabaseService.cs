@@ -1,6 +1,6 @@
 using System.Data.Common;
-using AdoMcpServer.Models;
-using AdoMcpServer.Services.Providers;
+using AdoMcp.Models;
+using AdoMcp.Services.Providers;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
@@ -8,9 +8,9 @@ using Microsoft.Extensions.Options;
 using MySqlConnector;
 using Npgsql;
 using Oracle.ManagedDataAccess.Client;
-using DbType = AdoMcpServer.Models.DbType;
+using DbType = AdoMcp.Models.DbType;
 
-namespace AdoMcpServer.Services;
+namespace AdoMcp.Services;
 
 public class DatabaseService(
     IOptions<List<DatabaseConfig>> options,

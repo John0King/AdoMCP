@@ -1,4 +1,4 @@
-namespace AdoMcpServer.Models;
+namespace AdoMcp.Models;
 
 /// <summary>Runtime options parsed from command-line arguments at startup.</summary>
 public class ServerOptions

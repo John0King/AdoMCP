@@ -1,7 +1,7 @@
 using System.Data.Common;
-using AdoMcpServer.Models;
+using AdoMcp.Models;
 
-namespace AdoMcpServer.Services.Providers;
+namespace AdoMcp.Services.Providers;
 
 /// <summary>
 /// Abstracts per-engine schema-discovery and metadata operations.

@@ -1,7 +1,7 @@
 using System.CommandLine;
-using AdoMcpServer.Models;
-using AdoMcpServer.Services;
-using AdoMcpServer.Tools;
+using AdoMcp.Models;
+using AdoMcp.Services;
+using AdoMcp.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,4 +1,4 @@
-namespace AdoMcpServer.Models;
+namespace AdoMcp.Models;
 
 /// <summary>Supported database engine types.</summary>
 public enum DbType
