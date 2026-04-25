@@ -367,7 +367,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         if (!serverOptions.AllowAnySql)
             return """
                 Error: execute_sql is disabled. Start the server with --allow-any-sql to enable write operations.
-                Example: adomcp --allow-any-sql
+                Example: dnx AdoMcp -- --allow-any-sql
                 Development: dotnet run --project src/AdoMcp -- --allow-any-sql
                 """;
 
