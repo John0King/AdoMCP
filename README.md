@@ -10,15 +10,28 @@ AdoMcp 是一个基于 [Model Context Protocol (MCP)](https://modelcontextprotoc
 
 | Tool | Description |
 |---|---|
-| `list_connections` | List all configured database connections (pre-configured + dynamically added at runtime) |
-| `add_connection` | **Dynamically add** a database connection at runtime without modifying config files |
+| `list_connections` | List configured database connections |
+| `add_connection` | Add (or replace) a database connection at runtime |
 | `remove_connection` | Remove a dynamically-added connection |
-| `list_objects` | List all database objects (tables, views, procedures, functions, triggers, sequences, synonyms, …) with name-filter support |
-| `get_table_schema` | Get the full schema of a table (column names, types, primary keys, **column comments**) |
-| `get_table_indexes` | Get indexes defined on a table |
-| `list_routines` | List stored procedures and functions (with type and comment), with name-filter support |
-| `query_sql` | Execute a **read-only** SQL query and return results as CSV |
-| `execute_sql` | Execute a **write** SQL statement (INSERT / UPDATE / DELETE / DDL) — requires `--allow-any-sql` |
+| `list_objects` | List database objects (table/view/procedure/function/trigger/sequence/synonym, etc.) |
+| `get_table_schema` | Get table schema details (columns/types/nullability/PK/default/comments) |
+| `get_table_indexes` | Get table indexes |
+| `query_sql` | Execute read-only SQL and return CSV |
+| `execute_sql` | Execute write SQL (requires `--allow-any-sql`) |
+
+## Recommended Tool Workflow (for LLM agents)
+
+To reduce mistakes (wrong database/schema/object), use tools in this order:
+
+1. `list_connections` to discover available connections.
+2. If none are available, call `add_connection`.
+3. Before inspecting a table/view, call `list_objects` to locate `schema + objectType + objectName`.
+4. Use `get_table_schema` for column details (type, nullability, PK, default, comments).
+5. Use `get_table_indexes` when index/key design matters.
+6. Use `query_sql` only for read-only verification.
+7. Use `execute_sql` only when explicitly authorized and server is started with `--allow-any-sql`.
+
+Oracle note: objects without owner prefix may be synonyms. Always confirm the real schema via `list_objects` first.
 
 ## Supported Databases
 
