@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "adomcp",
+  "displayName": "AdoMcp",
+  "version": "1.3.0",
+  "description": "Explore SQL Server, MySQL, PostgreSQL, SQLite, and Oracle schemas and data through MCP.",
+  "author": {
+    "name": "John0King",
+    "url": "https://github.com/John0King"
+  },
+  "homepage": "https://github.com/John0King/AdoMCP",
+  "repository": "https://github.com/John0King/AdoMCP",
+  "license": "MIT",
+  "keywords": ["database", "mcp", "sql", "schema"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

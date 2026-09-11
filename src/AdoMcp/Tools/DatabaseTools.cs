@@ -303,8 +303,8 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     [Description("""
         Execute a read-only SQL query and return the results as CSV.
         Suitable for SELECT statements and any SQL that produces a result set.
-        Destructive operations (DROP / DELETE / UPDATE / ALTER) are not allowed;
-        use execute_sql (with --allow-any-sql) for those.
+        Rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations.
+        Use execute_sql (with --allow-any-sql) for writes.
         Returns CSV with column headers on the first row followed by data rows.
         Returns a message when the query produces no rows.
         """)]

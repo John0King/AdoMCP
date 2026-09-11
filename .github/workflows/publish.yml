@@ -65,13 +65,36 @@ jobs:
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
-      - name: Sync server.json version
+      - name: Sync release metadata versions
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
 
           version = "${{ steps.version.outputs.VERSION }}"
+
+          plugin_manifests = [
+              Path("plugin.json"),
+              Path(".codex-plugin/plugin.json"),
+              Path(".claude-plugin/plugin.json"),
+          ]
+          for path in plugin_manifests:
+              data = json.loads(path.read_text())
+              data["version"] = version
+              path.write_text(json.dumps(data, indent=2) + "\n")
+
+          marketplaces = [
+              Path(".github/plugin/marketplace.json"),
+              Path(".claude-plugin/marketplace.json"),
+          ]
+          for path in marketplaces:
+              data = json.loads(path.read_text())
+              data.setdefault("metadata", {})["version"] = version
+              for plugin in data.get("plugins", []):
+                  if plugin.get("name") == "adomcp":
+                      plugin["version"] = version
+              path.write_text(json.dumps(data, indent=2) + "\n")
+
           path = Path("server.json")
           data = json.loads(path.read_text())
           data["version"] = version

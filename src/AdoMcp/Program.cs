@@ -4,6 +4,7 @@ using AdoMcp.Services;
 using AdoMcp.Tools;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.FileProviders.Physical;
+using ModelContextProtocol.Server;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLI definition
@@ -72,7 +73,7 @@ static async Task RunHttpModeAsync(string[] args, bool? cliAllowAnySql, Cancella
     builder.Logging.AddConsole();
     ConfigureServices(builder.Services, builder.Configuration, cliAllowAnySql);
     builder.Services
-        .AddMcpServer()
+        .AddMcpServer(ConfigureMcpServer)
         .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
         .WithHttpTransport();
 
@@ -96,7 +97,7 @@ static async Task RunStdioModeAsync(string[] args, bool? cliAllowAnySql, Cancell
     builder.Logging.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
     ConfigureServices(builder.Services, builder.Configuration, cliAllowAnySql);
     builder.Services
-        .AddMcpServer()
+        .AddMcpServer(ConfigureMcpServer)
         .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
         .WithStdioServerTransport();
 
@@ -140,4 +141,18 @@ static void ConfigureServices(
 
     services.AddSingleton<IDatabaseService, DatabaseService>();
     services.AddSingleton(new ServerOptions { AllowAnySql = allowAnySql });
+}
+
+/// <summary>Provides root instructions in the MCP initialize/discover response.</summary>
+static void ConfigureMcpServer(McpServerOptions options)
+{
+    options.ServerInstructions = """
+        Use AdoMcp to discover and inspect SQL Server, MySQL/MariaDB, PostgreSQL, SQLite, and Oracle databases.
+
+        Start every database task with list_connections. If the required connection is unavailable, use add_connection only after obtaining the database type and connection string from the user. Before inspecting or querying an object, call list_objects to confirm its schema, object type, and exact name. Then use get_table_schema for columns, types, nullability, primary keys, defaults, and comments; use get_table_indexes when keys or performance matter.
+
+        query_sql is strictly for read-only SQL, such as SELECT statements. It rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations. For a write operation, call execute_sql only when the user has explicitly authorized that specific change and the server was started with AllowAnySql enabled. Do not expose connection strings or credentials in responses.
+
+        Oracle objects without an owner may be synonyms. Resolve the actual owner with list_objects first. If an object name is ambiguous across schemas, ask the user to select the intended schema. Do not guess business meanings that are not supported by database comments or user-provided context.
+        """;
 }

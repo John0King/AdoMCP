@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "adomcp": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": ["-y", "AdoMcp"]
+    }
+  }
+}
