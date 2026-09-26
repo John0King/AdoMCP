@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "Official plugins for AdoMcp",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "plugins": [
     {
       "name": "adomcp",
       "description": "Explore database schemas and data through AdoMcp.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "source": "."
     }
   ]

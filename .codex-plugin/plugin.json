@@ -1,6 +1,6 @@
 {
   "name": "adomcp",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Explore SQL Server, MySQL, PostgreSQL, SQLite, and Oracle schemas and data through MCP.",
   "author": {
     "name": "John0King",
