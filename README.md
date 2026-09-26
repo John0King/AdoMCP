@@ -126,7 +126,7 @@ AdoMcp 按以下顺序加载配置，后面的来源覆盖前面的来源：
 3. 用户配置 `~/.adomcp.json`（Windows 为 `%USERPROFILE%\.adomcp.json`）
 4. `ADOMCP_` 前缀的环境变量
 5. .NET User Secrets
-6. 命令行 `--allow-any-sql`（仅覆盖写 SQL 开关）
+6. 命令行 `--allow-any-sql`（覆盖全局 `AllowAnySql`，影响动态连接及未单独设置权限的静态连接）
 
 最常用的方式是在用户目录创建 `.adomcp.json`：
 
@@ -138,6 +138,7 @@ AdoMcp 按以下顺序加载配置，后面的来源覆盖前面的来源：
       "Name": "mydb",
       "DbType": "PostgreSql",
       "ConnectionString": "Host=localhost;Database=app;Username=postgres;Password=***;",
+      "AllowAnySql": false,
       "Description": "Local development database"
     }
   ]
@@ -146,7 +147,9 @@ AdoMcp 按以下顺序加载配置，后面的来源覆盖前面的来源：
 
 `DbType` 可选值：`SqlServer`、`MySql`、`PostgreSql`、`Sqlite`、`Oracle`。
 
-也可以不创建配置文件，让 Agent 在会话中调用 `add_connection`。动态连接仅在当前 AdoMcp 进程中有效，重启后不会保留。
+静态连接显式设置 `AllowAnySql` 时使用自身的值；省略时继承全局 `AllowAnySql`。动态连接也继承全局值，不能单独指定。全局值可在配置文件、`ADOMCP_ALLOWANYSQL` 环境变量或启动参数中设置，命令行优先，默认 `false`。权限在进程启动时确定；`list_connections` 的 `canWrite` 列显示当前生效的权限。
+
+也可以不创建配置文件，让 Agent 在会话中调用 `add_connection`。动态连接继承启动时确定的全局 `AllowAnySql`，仅在当前 AdoMcp 进程中有效，重启后不会保留。同名动态连接会覆盖静态连接，直到移除该动态连接。
 
 > 不要把真实连接字符串提交到 Git。生产环境建议使用环境变量、User Secrets 或客户端的密钥管理能力。
 
@@ -171,14 +174,14 @@ adomcp
 
 ### 写 SQL 安全开关
 
-`execute_sql` 默认不可用。只有在用户明确授权写操作后，才应通过以下任一方式开启：
+`execute_sql` 按目标连接判断。静态连接可以显式设置 `"AllowAnySql": true` 开启写入，或省略该项来继承全局设置；动态连接始终继承全局设置。例如：
 
 ```bash
 dnx -y AdoMcp -- --allow-any-sql
 dnx -y AdoMcp -- --http --allow-any-sql
 ```
 
-或在配置中设置 `"AllowAnySql": true`，或设置环境变量 `ADOMCP_ALLOWANYSQL=true`。命令行参数优先级最高。
+也可以在配置文件中设置顶层 `"AllowAnySql": true`，或设置环境变量 `ADOMCP_ALLOWANYSQL=true`。运行中修改配置文件不会改变当前进程的写入权限。对于必须保证只读的数据库，请同时使用仅有读取权限的数据库账号；`query_sql` 的 SQL 文本检查不能替代数据库权限。
 
 ## Agent 推荐工作流
 
@@ -198,7 +201,7 @@ Oracle 中未带 owner 的对象可能是 synonym，应先通过 `list_objects` 
 |---|---|
 | `ADOMCP_MODE` | `stdio` 或 `http` |
 | `ADOMCP_URLS` | HTTP 监听地址，例如 `http://0.0.0.0:5100` |
-| `ADOMCP_ALLOWANYSQL` | 是否启用 `execute_sql`，默认 `false` |
+| `ADOMCP_ALLOWANYSQL` | 动态连接及未单独设置权限的静态连接的全局写入默认值，默认 `false` |
 | `ADOMCP_DATABASES` | JSON 编码的 `Databases` 数组 |
 
 ## MCP Registry

@@ -4,8 +4,7 @@ namespace AdoMcp.Models;
 public class ServerOptions
 {
     /// <summary>
-    /// When <c>true</c>, the <c>execute_sql</c> MCP tool is enabled.
-    /// Requires the <c>--allow-any-sql</c> startup argument.
+    /// Global default write policy for dynamic and non-overriding static connections, resolved at startup.
     /// </summary>
     public bool AllowAnySql { get; init; }
 }

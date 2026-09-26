@@ -14,6 +14,7 @@ namespace AdoMcp.Services;
 
 public class DatabaseService(
     IOptions<List<DatabaseConfig>> options,
+    ServerOptions serverOptions,
     ILogger<DatabaseService> logger) : IDatabaseService
 {
     // ─────────────────────────────────────────────────────────────────────────
@@ -59,6 +60,12 @@ public class DatabaseService(
             .AsReadOnly();
     }
 
+    public bool CanWrite(string connectionName)
+    {
+        var cfg = GetConfig(connectionName);
+        return cfg.AllowAnySql ?? serverOptions.AllowAnySql;
+    }
+
     public async Task<string?> AddConnectionAsync(
         DatabaseConfig config, bool testFirst = true, CancellationToken ct = default)
     {
@@ -66,6 +73,8 @@ public class DatabaseService(
             return "连接名称不能为空。";
         if (string.IsNullOrWhiteSpace(config.ConnectionString))
             return "连接字符串不能为空。";
+        // Runtime callers cannot override the global setting fixed at startup.
+        config.AllowAnySql = null;
 
         if (testFirst)
         {

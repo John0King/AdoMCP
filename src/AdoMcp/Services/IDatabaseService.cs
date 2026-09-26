@@ -8,6 +8,9 @@ public interface IDatabaseService
     /// <summary>Lists all configured database connections (pre-configured + dynamically added).</summary>
     IReadOnlyList<DatabaseConfig> GetConfigurations();
 
+    /// <summary>Whether the named connection can execute write SQL under the startup policy.</summary>
+    bool CanWrite(string connectionName);
+
     /// <summary>
     /// Adds (or replaces) a named connection at runtime. If <paramref name="testFirst"/> is true,
     /// the connection is opened briefly to verify the credentials before storing.

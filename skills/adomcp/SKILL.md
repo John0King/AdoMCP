@@ -15,7 +15,7 @@ Use AdoMcp for database discovery and analysis. Identify the connection and obje
 4. Call `get_table_schema` for columns, types, nullability, primary keys, defaults, and comments.
 5. Call `get_table_indexes` when keys or query performance matter.
 6. Use `query_sql` for read-only verification and report the query's purpose plus the returned row count or a concise sample.
-7. Use `execute_sql` only when the user explicitly authorizes the write and the server has been started with `--allow-any-sql`.
+7. Use `execute_sql` only when the user explicitly authorizes the write and `list_connections` reports `canWrite=true` for the target connection.
 
 ## Oracle
 

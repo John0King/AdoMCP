@@ -13,7 +13,7 @@ namespace AdoMcp.Tools;
 
 /// <summary>MCP tools that expose database metadata and query execution to AI models.</summary>
 [McpServerToolType]
-public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
+public class DatabaseTools(IDatabaseService db)
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -101,14 +101,15 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     private sealed record ConnectionCsvRow(
         [property: Name("name")]        string Name,
         [property: Name("dbType")]      string DbType,
-        [property: Name("description")] string? Description);
+        [property: Name("description")] string? Description,
+        [property: Name("canWrite")]    bool CanWrite);
 
     // ─────────────────────────────────────────────────────────────────────────
     // list_connections
     // ─────────────────────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "list_connections")]
-    [Description("List all configured database connections (pre-configured + dynamically added at runtime). Use this to discover available connection names for other tools. Returns CSV (name,dbType,description).")]
+    [Description("List all configured database connections and their effective write access. Returns CSV (name,dbType,description,canWrite).")]
     public string ListConnections()
     {
         var configs = db.GetConfigurations();
@@ -116,7 +117,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
             return "No database connections are configured. Use the add_connection tool to add one, or add a Databases section to appsettings.json.";
 
         return ToCsv(configs.Select(c =>
-            new ConnectionCsvRow(c.Name, c.DbType.ToString(), c.Description)));
+            new ConnectionCsvRow(c.Name, c.DbType.ToString(), c.Description, db.CanWrite(c.Name))));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -126,6 +127,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     [McpServerTool(Name = "add_connection")]
     [Description("""
         Dynamically add (or replace) a database connection at runtime without modifying config files.
+        Dynamic connections inherit the global AllowAnySql setting fixed at startup.
         The connection is immediately available to all other tools via its name.
         Supported dbType values: SqlServer | MySql | PostgreSql | Sqlite | Oracle
 
@@ -304,7 +306,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         Execute a read-only SQL query and return the results as CSV.
         Suitable for SELECT statements and any SQL that produces a result set.
         Rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations.
-        Use execute_sql (with --allow-any-sql) for writes.
+        Use execute_sql for writes when the target connection allows it.
         Returns CSV with column headers on the first row followed by data rows.
         Returns a message when the query produces no rows.
         """)]
@@ -320,7 +322,7 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         if (WriteKeywordsRegex.IsMatch(sql))
             return """
                 Error: the SQL contains a write operation (INSERT / UPDATE / DELETE / DROP / ALTER / CREATE / TRUNCATE).
-                Use the execute_sql tool for write operations (requires --allow-any-sql).
+                Use the execute_sql tool for write operations (requires write access on the target connection).
                 """;
 
         maxRows = Math.Clamp(maxRows, 1, 1000);
@@ -352,7 +354,8 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
     [McpServerTool(Name = "execute_sql")]
     [Description("""
         Execute a SQL statement that modifies data or schema (INSERT / UPDATE / DELETE / DDL).
-        Requires the server to be started with the --allow-any-sql argument.
+        Requires write access on the target connection. Static connections use their own AllowAnySql setting
+        when specified; otherwise they inherit the global startup setting, as dynamic connections do.
         Returns the number of rows affected.
         WARNING: Use with caution — DDL and bulk DELETE/UPDATE may not be reversible.
         For read-only SELECT queries use query_sql instead.
@@ -364,15 +367,11 @@ public class DatabaseTools(IDatabaseService db, ServerOptions serverOptions)
         string sql,
         CancellationToken cancellationToken = default)
     {
-        if (!serverOptions.AllowAnySql)
-            return """
-                Error: execute_sql is disabled. Start the server with --allow-any-sql to enable write operations.
-                Example: dnx AdoMcp -- --allow-any-sql
-                Development: dotnet run --project src/AdoMcp -- --allow-any-sql
-                """;
-
         try
         {
+            if (!db.CanWrite(connectionName))
+                return $"Error: execute_sql is disabled for connection '{connectionName}'.";
+
             var result = await db.ExecuteSqlAsync(connectionName, sql, maxRows: 0, cancellationToken);
 
             if (result.ErrorMessage is not null)

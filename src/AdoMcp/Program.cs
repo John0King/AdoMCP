@@ -4,6 +4,7 @@ using AdoMcp.Services;
 using AdoMcp.Tools;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.FileProviders.Physical;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ var stdioOption = new Option<bool>("--stdio")
 
 var allowAnySqlOption = new Option<bool?>("--allow-any-sql")
 {
-    Description = "Enable the execute_sql MCP tool. Omit to defer to the AllowAnySql setting in appsettings / ~/.adomcp.json (default false).",
+    Description = "Set the default write policy for dynamic connections and static connections without an override. Omit to use AllowAnySql from configuration (default false).",
     DefaultValueFactory = _ => null,
 };
 
@@ -126,20 +127,19 @@ static void ConfigureConfiguration(ConfigurationManager config, string environme
         .AddUserSecrets<Program>(optional: true);
 }
 
-/// <summary>Registers core application services and resolves the effective <c>AllowAnySql</c>
-/// value: an explicit <c>--allow-any-sql</c> CLI flag wins; otherwise the configuration's
-/// <c>AllowAnySql</c> setting is used (appsettings / ~/.adomcp.json / env); default <c>false</c>.</summary>
+/// <summary>Registers services and snapshots the global default and static connections at startup.</summary>
 static void ConfigureServices(
     IServiceCollection services, IConfiguration configuration, bool? cliAllowAnySql)
 {
-    services.Configure<List<DatabaseConfig>>(configuration.GetSection("Databases"));
+    // Bind now, before the server starts accepting MCP calls. Reloadable configuration
+    // files must not change write policy during this process lifetime.
+    var databases = configuration.GetSection("Databases").Get<List<DatabaseConfig>>() ?? [];
+    services.AddSingleton<IOptions<List<DatabaseConfig>>>(Options.Create(databases));
 
-    // CLI flag wins when explicitly set; otherwise fall back to configuration, then false.
+    services.AddSingleton<IDatabaseService, DatabaseService>();
     bool allowAnySql = cliAllowAnySql
         ?? configuration.GetValue<bool?>("AllowAnySql")
         ?? false;
-
-    services.AddSingleton<IDatabaseService, DatabaseService>();
     services.AddSingleton(new ServerOptions { AllowAnySql = allowAnySql });
 }
 
@@ -151,7 +151,7 @@ static void ConfigureMcpServer(McpServerOptions options)
 
         Start every database task with list_connections. If the required connection is unavailable, use add_connection only after obtaining the database type and connection string from the user. Before inspecting or querying an object, call list_objects to confirm its schema, object type, and exact name. Then use get_table_schema for columns, types, nullability, primary keys, defaults, and comments; use get_table_indexes when keys or performance matter.
 
-        query_sql is strictly for read-only SQL, such as SELECT statements. It rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations. For a write operation, call execute_sql only when the user has explicitly authorized that specific change and the server was started with AllowAnySql enabled. Do not expose connection strings or credentials in responses.
+        query_sql is strictly for read-only SQL, such as SELECT statements. It rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations. For a write operation, call execute_sql only when the user has explicitly authorized that specific change and list_connections reports canWrite=true for the target connection. Static connections use their own AllowAnySql setting when specified; otherwise they inherit the global startup setting, as dynamic connections do. Do not expose connection strings or credentials in responses.
 
         Oracle objects without an owner may be synonyms. Resolve the actual owner with list_objects first. If an object name is ambiguous across schemas, ask the user to select the intended schema. Do not guess business meanings that are not supported by database comments or user-provided context.
         """;

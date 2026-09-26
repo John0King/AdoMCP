@@ -22,6 +22,9 @@ public class DatabaseConfig
     /// <summary>ADO.NET connection string.</summary>
     public string ConnectionString { get; set; } = string.Empty;
 
+    /// <summary>Write policy override. When omitted, inherit the global startup setting.</summary>
+    public bool? AllowAnySql { get; set; }
+
     /// <summary>Optional human-readable description of what this database is used for.</summary>
     public string? Description { get; set; }
 }
