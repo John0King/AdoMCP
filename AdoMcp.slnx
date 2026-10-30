@@ -5,4 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/AdoMcp/AdoMcp.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AdoMcp.Tests/AdoMcp.Tests.csproj" />
+  </Folder>
 </Solution>

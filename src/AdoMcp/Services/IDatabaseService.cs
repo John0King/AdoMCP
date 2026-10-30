@@ -2,40 +2,12 @@ using AdoMcp.Models;
 
 namespace AdoMcp.Services;
 
-/// <summary>Provides database metadata and query execution capabilities.</summary>
+/// <summary>Database metadata and SQL operations. SQL access checks are enforced here.</summary>
 public interface IDatabaseService
 {
-    /// <summary>Lists all configured database connections (pre-configured + dynamically added).</summary>
-    IReadOnlyList<DatabaseConfig> GetConfigurations();
-
-    /// <summary>Whether the named connection can execute write SQL under the startup policy.</summary>
-    bool CanWrite(string connectionName);
-
-    /// <summary>
-    /// Adds (or replaces) a named connection at runtime. If <paramref name="testFirst"/> is true,
-    /// the connection is opened briefly to verify the credentials before storing.
-    /// Returns <c>null</c> on success, or an error message on failure.
-    /// </summary>
-    Task<string?> AddConnectionAsync(DatabaseConfig config, bool testFirst = true, CancellationToken ct = default);
-
-    /// <summary>
-    /// Removes a dynamically-added connection by name.
-    /// Pre-configured connections from appsettings.json cannot be removed.
-    /// </summary>
-    bool RemoveConnection(string name);
-
-    /// <summary>
-    /// Lists all database objects (tables, views, procedures, functions, triggers, sequences, etc.)
-    /// in the target database.
-    /// </summary>
     Task<List<TableInfo>> ListDbObjectsAsync(string connectionName, string? nameFilter = null, string? schemaFilter = null, CancellationToken ct = default);
-
-    /// <summary>Returns the full schema of a table, including column types and comments.</summary>
     Task<TableSchema> GetTableSchemaAsync(string connectionName, string tableName, string? schema = null, CancellationToken ct = default);
-
-    /// <summary>Lists indexes defined on a specific table.</summary>
     Task<List<IndexInfo>> GetTableIndexesAsync(string connectionName, string tableName, string? schema = null, CancellationToken ct = default);
-
-    /// <summary>Executes a SQL statement and returns the result set (SELECT) or rows-affected count (DML).</summary>
-    Task<QueryResult> ExecuteSqlAsync(string connectionName, string sql, int maxRows = 200, CancellationToken ct = default);
+    Task<QueryResult> QueryAsync(string connectionName, string sql, int maxRows = 200, CancellationToken ct = default);
+    Task<int> ExecuteAsync(string connectionName, string sql, CancellationToken ct = default);
 }

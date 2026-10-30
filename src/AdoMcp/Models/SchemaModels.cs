@@ -48,11 +48,10 @@ public class IndexInfo
 /// <summary>A single row from a query result, expressed as a dictionary of column → value.</summary>
 public class QueryRow : Dictionary<string, object?> { }
 
-/// <summary>Result set returned by <c>execute_sql</c>.</summary>
+/// <summary>Result set returned by <c>query_sql</c>. Execution failures are raised as exceptions.</summary>
 public class QueryResult
 {
     public List<string> Columns { get; set; } = [];
     public List<QueryRow> Rows { get; set; } = [];
     public int RowsAffected { get; set; }
-    public string? ErrorMessage { get; set; }
 }

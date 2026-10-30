@@ -181,7 +181,19 @@ dnx -y AdoMcp -- --allow-any-sql
 dnx -y AdoMcp -- --http --allow-any-sql
 ```
 
-也可以在配置文件中设置顶层 `"AllowAnySql": true`，或设置环境变量 `ADOMCP_ALLOWANYSQL=true`。运行中修改配置文件不会改变当前进程的写入权限。对于必须保证只读的数据库，请同时使用仅有读取权限的数据库账号；`query_sql` 的 SQL 文本检查不能替代数据库权限。
+也可以在配置文件中设置顶层 `"AllowAnySql": true`，或设置环境变量 `ADOMCP_ALLOWANYSQL=true`。运行中修改配置文件不会改变当前进程的写入权限。查询和写入使用同一个连接配置，由服务端执行入口检查 SQL 与写入权限。
+
+`query_sql` 接受单条 `SELECT` 或 `WITH` 查询，可带一个末尾分号。检查时跳过字符串、引用标识符和普通注释，拦截写入、DDL、过程调用与事务控制关键字；例如 `SELECT 'DELETE'` 可以执行，`SELECT ... INTO ...`、修改数据的 CTE 和多语句批次会被拒绝。MySQL/MariaDB 可执行注释及引用文本中的反斜杠会因语义不明确而被拒绝。此检查是保守的词法过滤，并不解析完整 SQL，也无法识别数据库函数内部的副作用。未引用的名称若命中拦截关键字，也会被拒绝。
+
+### 内部职责与验证
+
+- `ConnectionRegistry`：保存启动配置快照、管理动态连接覆盖，并返回包含生效写入策略的配置副本。
+- `DatabaseService`：获取元数据、执行查询或写入；查询调用 `SqlQueryGuard`，写入检查当前配置的权限。
+- `DbConnections`：创建和打开 ADO.NET 连接，打开失败时释放连接；调用方负责正常路径的释放。
+- `IDbProvider`：保留各数据库的元数据查询实现。
+- `DatabaseTools`：MCP 参数及 CSV/JSON 输出，将异常转成工具错误，取消请求则继续传播。
+
+执行 `dotnet test AdoMcp.slnx` 验证 SQL 过滤、连接配置覆盖与权限、取消行为及 SQLite 查询/写入/元数据调用。
 
 ## Agent 推荐工作流
 

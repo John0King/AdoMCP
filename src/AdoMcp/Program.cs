@@ -136,6 +136,7 @@ static void ConfigureServices(
     var databases = configuration.GetSection("Databases").Get<List<DatabaseConfig>>() ?? [];
     services.AddSingleton<IOptions<List<DatabaseConfig>>>(Options.Create(databases));
 
+    services.AddSingleton<IConnectionRegistry, ConnectionRegistry>();
     services.AddSingleton<IDatabaseService, DatabaseService>();
     bool allowAnySql = cliAllowAnySql
         ?? configuration.GetValue<bool?>("AllowAnySql")
@@ -151,7 +152,7 @@ static void ConfigureMcpServer(McpServerOptions options)
 
         Start every database task with list_connections. If the required connection is unavailable, use add_connection only after obtaining the database type and connection string from the user. Before inspecting or querying an object, call list_objects to confirm its schema, object type, and exact name. Then use get_table_schema for columns, types, nullability, primary keys, defaults, and comments; use get_table_indexes when keys or performance matter.
 
-        query_sql is strictly for read-only SQL, such as SELECT statements. It rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations. For a write operation, call execute_sql only when the user has explicitly authorized that specific change and list_connections reports canWrite=true for the target connection. Static connections use their own AllowAnySql setting when specified; otherwise they inherit the global startup setting, as dynamic connections do. Do not expose connection strings or credentials in responses.
+        query_sql accepts a single SELECT or WITH query and rejects write/control keywords outside quoted text and comments. Its token filter cannot detect side effects inside database functions; do not use it to invoke functions that modify data. For a write operation, call execute_sql only when the user has explicitly authorized that specific change and list_connections reports canWrite=true for the target connection. Static connections use their own AllowAnySql setting when specified; otherwise they inherit the global startup setting, as dynamic connections do. Do not expose connection strings or credentials in responses.
 
         Oracle objects without an owner may be synonyms. Resolve the actual owner with list_objects first. If an object name is ambiguous across schemas, ask the user to select the intended schema. Do not guess business meanings that are not supported by database comments or user-provided context.
         """;

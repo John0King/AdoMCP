@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using AdoMcp.Models;
 using AdoMcp.Services;
 using CsvHelper;
@@ -13,7 +12,7 @@ namespace AdoMcp.Tools;
 
 /// <summary>MCP tools that expose database metadata and query execution to AI models.</summary>
 [McpServerToolType]
-public class DatabaseTools(IDatabaseService db)
+public class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -23,23 +22,6 @@ public class DatabaseTools(IDatabaseService db)
 
     private static readonly CsvConfiguration CsvConfig =
         new(CultureInfo.InvariantCulture) { NewLine = "\n" };
-
-    // Matches destructive DML/DDL keywords at word boundaries (case-insensitive).
-    private static readonly Regex DestructiveKeywordsRegex = new(
-        @"\b(DROP|DELETE|UPDATE|ALTER)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    // Matches any write (non-SELECT) SQL keywords — used to guard query_sql.
-    private static readonly Regex WriteKeywordsRegex = new(
-        @"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|REPLACE)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    /// <summary>
-    /// Returns <c>true</c> when the SQL text contains at least one destructive keyword
-    /// (DROP, DELETE, UPDATE, ALTER).
-    /// </summary>
-    private static bool IsDestructiveSql(string sql) =>
-        DestructiveKeywordsRegex.IsMatch(sql);
 
     /// <summary>
     /// Converts a user-provided name pattern into a SQL LIKE filter.
@@ -112,12 +94,12 @@ public class DatabaseTools(IDatabaseService db)
     [Description("List all configured database connections and their effective write access. Returns CSV (name,dbType,description,canWrite).")]
     public string ListConnections()
     {
-        var configs = db.GetConfigurations();
+        var configs = connections.GetConfigurations();
         if (configs.Count == 0)
             return "No database connections are configured. Use the add_connection tool to add one, or add a Databases section to appsettings.json.";
 
         return ToCsv(configs.Select(c =>
-            new ConnectionCsvRow(c.Name, c.DbType.ToString(), c.Description, db.CanWrite(c.Name))));
+            new ConnectionCsvRow(c.Name, c.DbType.ToString(), c.Description, c.AllowAnySql == true)));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -149,7 +131,7 @@ public class DatabaseTools(IDatabaseService db)
         bool testConnection = true,
         CancellationToken cancellationToken = default)
     {
-        if (!Enum.TryParse<Models.DbType>(dbType, ignoreCase: true, out var parsedDbType))
+        if (!Enum.TryParse<Models.DbType>(dbType, ignoreCase: true, out var parsedDbType) || !Enum.IsDefined(parsedDbType))
         {
             var validValues = string.Join(", ", Enum.GetNames<Models.DbType>());
             return $"Error: unrecognized database type '{dbType}'. Supported values: {validValues}";
@@ -167,11 +149,15 @@ public class DatabaseTools(IDatabaseService db)
             Description      = description,
         };
 
-        var error = await db.AddConnectionAsync(config, testFirst: testConnection, ct: cancellationToken);
-        if (error is not null)
-            return $"Error: {error}";
-
-        return $"Connection '{connectionName}' ({parsedDbType}) added successfully. You can now use this name with other database tools.";
+        try
+        {
+            await connections.AddAsync(config, testFirst: testConnection, ct: cancellationToken);
+            return $"Connection '{connectionName}' ({parsedDbType}) added successfully. You can now use this name with other database tools.";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return $"Error: {ex.Message}";
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -187,7 +173,7 @@ public class DatabaseTools(IDatabaseService db)
         [Description("Name of the connection to remove.")]
         string connectionName)
     {
-        return db.RemoveConnection(connectionName)
+        return connections.Remove(connectionName)
             ? $"Connection '{connectionName}' removed successfully."
             : $"No dynamic connection named '{connectionName}' was found (pre-configured connections cannot be removed).";
     }
@@ -235,7 +221,7 @@ public class DatabaseTools(IDatabaseService db)
 
             return ToCsv(objects.Select(o => new ObjectCsvRow(o.Schema, o.Type, o.Name, o.Comment)));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return $"Error: {ex.Message}";
         }
@@ -265,7 +251,7 @@ public class DatabaseTools(IDatabaseService db)
             var result = await db.GetTableSchemaAsync(connectionName, tableName, schema, cancellationToken);
             return JsonSerializer.Serialize(result, JsonOpts);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return $"Error: {ex.Message}";
         }
@@ -291,7 +277,7 @@ public class DatabaseTools(IDatabaseService db)
             var result = await db.GetTableIndexesAsync(connectionName, tableName, schema, cancellationToken);
             return JsonSerializer.Serialize(result, JsonOpts);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return $"Error: {ex.Message}";
         }
@@ -304,8 +290,10 @@ public class DatabaseTools(IDatabaseService db)
     [McpServerTool(Name = "query_sql")]
     [Description("""
         Execute a read-only SQL query and return the results as CSV.
-        Suitable for SELECT statements and any SQL that produces a result set.
-        Rejects INSERT, UPDATE, DELETE, MERGE, DDL, and other write operations.
+        Accepts a single SELECT or WITH query, with an optional trailing semicolon.
+        Rejects write/control keywords outside strings, identifiers, and comments.
+        Executable comments and ambiguous backslash escapes are rejected.
+        Token filtering cannot detect side effects inside database functions.
         Use execute_sql for writes when the target connection allows it.
         Returns CSV with column headers on the first row followed by data rows.
         Returns a message when the query produces no rows.
@@ -313,25 +301,15 @@ public class DatabaseTools(IDatabaseService db)
     public async Task<string> QuerySqlAsync(
         [Description("Database connection name.")]
         string connectionName,
-        [Description("SQL query to execute (SELECT or any read-only statement).")]
+        [Description("A single SELECT or WITH query, optionally ending with a semicolon.")]
         string sql,
         [Description("Maximum number of rows to return. Default 200, max 1000.")]
         int maxRows = 200,
         CancellationToken cancellationToken = default)
     {
-        if (WriteKeywordsRegex.IsMatch(sql))
-            return """
-                Error: the SQL contains a write operation (INSERT / UPDATE / DELETE / DROP / ALTER / CREATE / TRUNCATE).
-                Use the execute_sql tool for write operations (requires write access on the target connection).
-                """;
-
-        maxRows = Math.Clamp(maxRows, 1, 1000);
         try
         {
-            var result = await db.ExecuteSqlAsync(connectionName, sql, maxRows, cancellationToken);
-
-            if (result.ErrorMessage is not null)
-                return $"Error: {result.ErrorMessage}";
+            var result = await db.QueryAsync(connectionName, sql, maxRows, cancellationToken);
 
             if (result.Columns.Count == 0)
                 return "Query executed successfully but returned no result set (non-SELECT statement?). Use execute_sql for DML/DDL.";
@@ -341,7 +319,7 @@ public class DatabaseTools(IDatabaseService db)
 
             return QueryResultToCsv(result);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return $"Error: {ex.Message}";
         }
@@ -369,19 +347,12 @@ public class DatabaseTools(IDatabaseService db)
     {
         try
         {
-            if (!db.CanWrite(connectionName))
-                return $"Error: execute_sql is disabled for connection '{connectionName}'.";
-
-            var result = await db.ExecuteSqlAsync(connectionName, sql, maxRows: 0, cancellationToken);
-
-            if (result.ErrorMessage is not null)
-                return $"Error: {result.ErrorMessage}";
-
-            return result.RowsAffected >= 0
-                ? $"{result.RowsAffected} row(s) affected."
+            var rowsAffected = await db.ExecuteAsync(connectionName, sql, cancellationToken);
+            return rowsAffected >= 0
+                ? $"{rowsAffected} row(s) affected."
                 : "Statement executed successfully.";
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return $"Error: {ex.Message}";
         }
