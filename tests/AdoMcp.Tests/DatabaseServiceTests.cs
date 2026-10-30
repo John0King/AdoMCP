@@ -45,11 +45,16 @@ public class DatabaseServiceTests
         Assert.Equal(2, (await service.GetTableSchemaAsync("main", "items")).Columns.Count);
         Assert.Contains("ix_label", (await service.GetTableIndexesAsync("main", "items")).Select(i => i.IndexName));
         Assert.Equal("label\nDELETE", await tools.QuerySqlAsync("main", "SELECT label FROM items WHERE id = 1"));
+        Assert.Equal("value,missing\n\"one,\"\"two\"\"\nthree\",",
+            await tools.QuerySqlAsync("main", "SELECT 'one,\"two\"' || char(10) || 'three' AS value, NULL AS missing"));
+        Assert.Equal("schema,objectType,objectName,comment\n,TABLE,items,",
+            await tools.ListObjectsAsync("main", objectType: "table"));
         Assert.StartsWith("Error:", await tools.QuerySqlAsync("main", "SELECT 1; DELETE FROM items"));
         Assert.Equal(3, (await service.QueryAsync("main", "SELECT * FROM items")).Rows.Count);
         Assert.Equal("1 row(s) affected.", await tools.ExecuteSqlAsync("main", "DELETE FROM items WHERE id = 1"));
         Assert.StartsWith("Error:", await tools.AddConnectionAsync("Data Source=:memory:", "99"));
         Assert.Contains("main,Sqlite,", tools.ListConnections());
+        Assert.StartsWith("name,dbType,description,canWrite\n", tools.ListConnections());
     }
 
     [Fact]

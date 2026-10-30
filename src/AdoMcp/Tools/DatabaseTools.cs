@@ -4,15 +4,13 @@ using System.Text.Json;
 using AdoMcp.Models;
 using AdoMcp.Services;
 using CsvHelper;
-using CsvHelper.Configuration;
-using CsvHelper.Configuration.Attributes;
 using ModelContextProtocol.Server;
 
 namespace AdoMcp.Tools;
 
 /// <summary>MCP tools that expose database metadata and query execution to AI models.</summary>
 [McpServerToolType]
-public class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
+public partial class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
 {
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -20,8 +18,8 @@ public class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private static readonly CsvConfiguration CsvConfig =
-        new(CultureInfo.InvariantCulture) { NewLine = "\n" };
+    private static readonly CsvWriterOptions CsvConfig =
+        new() { NewLine = "\n", FormatProvider = CultureInfo.InvariantCulture };
 
     /// <summary>
     /// Converts a user-provided name pattern into a SQL LIKE filter.
@@ -40,8 +38,9 @@ public class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
     private static string ToCsv<T>(IEnumerable<T> records)
     {
         using var writer = new StringWriter();
-        using var csv = new CsvWriter(writer, CsvConfig);
+        using var csv = CsvWriter.Create(writer, CsvConfig);
         csv.WriteRecords(records);
+        csv.Flush();
         return writer.ToString().TrimEnd();
     }
 
@@ -54,37 +53,40 @@ public class DatabaseTools(IConnectionRegistry connections, IDatabaseService db)
         if (result.Columns.Count == 0) return string.Empty;
 
         using var writer = new StringWriter();
-        using var csv = new CsvWriter(writer, CsvConfig);
+        using var csv = CsvWriter.Create(writer, CsvConfig);
 
         // Header row
         foreach (var col in result.Columns)
             csv.WriteField(col);
-        csv.NextRecord();
+        csv.EndRecord();
 
         // Data rows
         foreach (var row in result.Rows)
         {
             foreach (var col in result.Columns)
                 csv.WriteField(row.TryGetValue(col, out var val) ? val?.ToString() : null);
-            csv.NextRecord();
+            csv.EndRecord();
         }
 
+        csv.Flush();
         return writer.ToString().TrimEnd();
     }
 
     // CSV row types ────────────────────────────────────────────────────────────
 
-    private sealed record ObjectCsvRow(
-        [property: Name("schema")]     string Schema,
-        [property: Name("objectType")] string ObjectType,
-        [property: Name("objectName")] string ObjectName,
-        [property: Name("comment")]    string? Comment);
+    [CsvRecord]
+    internal sealed partial record ObjectCsvRow(
+        [property: CsvColumn("schema")]     string Schema,
+        [property: CsvColumn("objectType")] string ObjectType,
+        [property: CsvColumn("objectName")] string ObjectName,
+        [property: CsvColumn("comment")]    string? Comment);
 
-    private sealed record ConnectionCsvRow(
-        [property: Name("name")]        string Name,
-        [property: Name("dbType")]      string DbType,
-        [property: Name("description")] string? Description,
-        [property: Name("canWrite")]    bool CanWrite);
+    [CsvRecord]
+    internal sealed partial record ConnectionCsvRow(
+        [property: CsvColumn("name")]        string Name,
+        [property: CsvColumn("dbType")]      string DbType,
+        [property: CsvColumn("description")] string? Description,
+        [property: CsvColumn("canWrite")]    bool CanWrite);
 
     // ─────────────────────────────────────────────────────────────────────────
     // list_connections
