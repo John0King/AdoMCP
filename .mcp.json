@@ -3,7 +3,7 @@
     "adomcp": {
       "type": "stdio",
       "command": "dnx",
-      "args": ["-y", "AdoMcp"]
+      "args": ["-y", "AdoMcp@1.6.0"]
     }
   }
 }

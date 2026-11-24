@@ -13,6 +13,12 @@ A ready-to-run database MCP server for schema discovery, comments, indexes, and 
 
 Server name 和 version 由 MCP SDK 根据程序集元数据自动生成；Server 会在 MCP `initialize`/`server/discover` 响应中返回根级 `instructions`，指导客户端先定位连接与对象、只用 `query_sql` 读数据，并仅在明确授权后调用 `execute_sql`。
 
+### Server 随附 Skills
+
+从 1.6.0 起，Server 使用 MCP C# SDK 2.4.0 的 Skills 扩展（`io.modelcontextprotocol/skills`），在 stdio 和 HTTP 模式下直接提供 `adomcp` skill。支持该扩展的客户端可通过 `skills/list` 发现技能、通过 `skills/get` 获取文件清单，再用 `resources/read` 读取 `skill://adomcp/SKILL.md`；无需另外安装插件即可获取数据库操作工作流。
+
+技能内容复用仓库的 `skills/adomcp/SKILL.md`，随构建、发布和 NuGet tool 包分发。不支持 Skills 扩展的客户端仍可使用现有 tools 和 Server instructions，也可继续通过插件安装技能。该 SDK 扩展目前标记为实验性 API。
+
 ## 功能
 
 | Tool | 说明 |
@@ -39,7 +45,7 @@ Server name 和 version 由 MCP SDK 根据程序集元数据自动生成；Serve
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - 使用插件时，客户端需要允许启动本地 `dnx` 进程
 
-无需提前安装 AdoMcp。插件和示例配置使用 `dnx -y AdoMcp`，首次运行时会从 NuGet 获取包。
+无需提前安装 AdoMcp。插件和示例配置使用 `dnx -y AdoMcp@1.6.0`，首次运行时会从 NuGet 获取包。从 1.6.0 起，插件启动配置固定使用对应发行版本的 Server，避免自动跟随 NuGet 最新版本；升级插件时同步更新固定版本号。
 
 ## 插件安装
 
@@ -50,7 +56,7 @@ Server name 和 version 由 MCP SDK 根据程序集元数据自动生成；Serve
 仓库包含 `.codex-plugin/plugin.json`，可被 Codex 插件市场或本地插件源使用。若只需要 MCP Server，可直接添加：
 
 ```bash
-codex mcp add adomcp -- dnx -y AdoMcp
+codex mcp add adomcp -- dnx -y AdoMcp@1.6.0
 ```
 
 ### Claude Code（cc）
@@ -93,7 +99,7 @@ copilot plugin install adomcp@adomcp-plugins
   "mcpServers": {
     "adomcp": {
       "command": "dnx",
-      "args": ["-y", "AdoMcp"]
+      "args": ["-y", "AdoMcp@1.6.0"]
     }
   }
 }
@@ -102,7 +108,7 @@ copilot plugin install adomcp@adomcp-plugins
 HTTP 模式需先启动服务：
 
 ```bash
-dnx -y AdoMcp -- --http
+dnx -y AdoMcp@1.6.0 -- --http
 ```
 
 然后连接端点：
@@ -159,13 +165,13 @@ AdoMcp 按以下顺序加载配置，后面的来源覆盖前面的来源：
 
 ```bash
 # 默认 stdio
-dnx -y AdoMcp
+dnx -y AdoMcp@1.6.0
 
 # 显式 stdio（兼容旧配置）
-dnx -y AdoMcp -- --stdio
+dnx -y AdoMcp@1.6.0 -- --stdio
 
 # HTTP，默认监听 http://localhost:5100/mcp
-dnx -y AdoMcp -- --http
+dnx -y AdoMcp@1.6.0 -- --http
 
 # 安装为全局 .NET tool
 dotnet tool install -g AdoMcp
@@ -177,8 +183,8 @@ adomcp
 `execute_sql` 按目标连接判断。静态连接可以显式设置 `"AllowAnySql": true` 开启写入，或省略该项来继承全局设置；动态连接始终继承全局设置。例如：
 
 ```bash
-dnx -y AdoMcp -- --allow-any-sql
-dnx -y AdoMcp -- --http --allow-any-sql
+dnx -y AdoMcp@1.6.0 -- --allow-any-sql
+dnx -y AdoMcp@1.6.0 -- --http --allow-any-sql
 ```
 
 也可以在配置文件中设置顶层 `"AllowAnySql": true`，或设置环境变量 `ADOMCP_ALLOWANYSQL=true`。运行中修改配置文件不会改变当前进程的写入权限。查询和写入使用同一个连接配置，由服务端执行入口检查 SQL 与写入权限。

@@ -6,6 +6,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.FileProviders.Physical;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Extensions.Skills;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLI definition
@@ -73,10 +74,13 @@ static async Task RunHttpModeAsync(string[] args, bool? cliAllowAnySql, Cancella
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole();
     ConfigureServices(builder.Services, builder.Configuration, cliAllowAnySql);
+#pragma warning disable MCPEXP005 // Intentionally opt in to the experimental MCP Skills extension.
     builder.Services
         .AddMcpServer(ConfigureMcpServer)
         .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
+        .WithSkillsFromSubdirectories(Path.Combine(AppContext.BaseDirectory, "skills"))
         .WithHttpTransport();
+#pragma warning restore MCPEXP005
 
     var app = builder.Build();
     app.MapMcp("/mcp");
@@ -97,10 +101,13 @@ static async Task RunStdioModeAsync(string[] args, bool? cliAllowAnySql, Cancell
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole(opts => opts.LogToStandardErrorThreshold = LogLevel.Trace);
     ConfigureServices(builder.Services, builder.Configuration, cliAllowAnySql);
+#pragma warning disable MCPEXP005 // Intentionally opt in to the experimental MCP Skills extension.
     builder.Services
         .AddMcpServer(ConfigureMcpServer)
         .WithToolsFromAssembly(typeof(DatabaseTools).Assembly)
+        .WithSkillsFromSubdirectories(Path.Combine(AppContext.BaseDirectory, "skills"))
         .WithStdioServerTransport();
+#pragma warning restore MCPEXP005
 
     await builder.Build().RunAsync(ct);
 }
