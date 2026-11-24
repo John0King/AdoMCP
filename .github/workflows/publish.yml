@@ -19,6 +19,7 @@ jobs:
     environment: nuget
     permissions:
       contents: read
+      id-token: write
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
 
@@ -56,10 +57,16 @@ jobs:
           -p:Version=${{ steps.version.outputs.VERSION }}
           --output ./nupkg
 
+      - name: Authenticate to NuGet.org (trusted publishing)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to NuGet.org
         run: >
           dotnet nuget push ./nupkg/*.nupkg
-          --api-key ${{ secrets.NUGET_API_KEY }}
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 

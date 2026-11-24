@@ -226,6 +226,22 @@ Oracle 中未带 owner 的对象可能是 synonym，应先通过 `list_objects` 
 
 AdoMcp 已注册到官方 [MCP Registry](https://registry.modelcontextprotocol.io/)，Server name 为 `io.github.John0King/adomcp`。
 
+## 发布配置
+
+`.github/workflows/publish.yml` 使用 [NuGet 可信发布](https://learn.microsoft.com/zh-cn/nuget/nuget-org/trusted-publishing)：通过 GitHub OIDC 和 `NuGet/login@v1` 获取短期 API Key，不再读取长期 `NUGET_API_KEY` Secret。
+
+在 NuGet.org 为拥有 AdoMcp 包的账号配置 GitHub 可信发布策略：
+
+- Repository owner：`John0King`
+- Repository：`AdoMCP`
+- Workflow file：`publish.yml`（仅文件名）
+- Environment：`nuget`
+- 包范围限定为 `AdoMcp`，允许发布该包的新版本。
+
+在 GitHub 的 `nuget` Environment 中设置 `NUGET_USER` Secret，值为 NuGet 用户名（不是邮箱）。工作流保留该 Environment，并在 NuGet 发布作业中授予 `id-token: write`。
+
+推送版本标签会触发发布；若需补发已失败的版本，在新版工作流推送到 `main` 后，使用 **Run workflow** 选择 `main` 并填写原版本号（例如 `1.6.0`）。重新运行旧标签的失败任务仍会使用旧工作流。
+
 ## License
 
 [MIT](LICENSE)
