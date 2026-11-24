@@ -70,16 +70,24 @@ jobs:
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
-      - name: Wait 15 minutes for NuGet package availability
-        run: sleep 900
+  wait-for-nuget:
+    name: Wait for NuGet package availability
+    needs: publish-nuget
+    runs-on: ubuntu-latest
+    permissions: {}
+    # Configure a 15-minute Wait timer on this dedicated environment.
+    # GitHub waits before assigning a runner; this job completes before registry publishing.
+    environment:
+      name: nuget-propagation
+      deployment: false
+    steps:
+      - name: NuGet propagation wait completed
+        run: echo "NuGet environment wait completed."
 
   publish-mcp-registry:
     name: Publish to MCP Registry
-    needs: publish-nuget
+    needs: [publish-nuget, wait-for-nuget]
     runs-on: ubuntu-latest
-    environment:
-      name: mcp-registry
-      deployment: false
     permissions:
       contents: read
       id-token: write
