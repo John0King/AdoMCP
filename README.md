@@ -240,6 +240,8 @@ AdoMcp 已注册到官方 [MCP Registry](https://registry.modelcontextprotocol.i
 
 在 GitHub 的 `nuget` Environment 中设置 `NUGET_USER` Secret，值为 NuGet 用户名（不是邮箱）。工作流保留该 Environment，并在 NuGet 发布作业中授予 `id-token: write`。
 
+NuGet 上传成功后，工作流等待 15 分钟，再启动 MCP Registry 发布。`mcp-registry` Environment 不再设置额外等待计时。
+
 推送版本标签会触发发布；若需补发已失败的版本，在新版工作流推送到 `main` 后，使用 **Run workflow** 选择 `main` 并填写原版本号（例如 `1.6.0`）。重新运行旧标签的失败任务仍会使用旧工作流。
 
 ## License
